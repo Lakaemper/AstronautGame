@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Astro Game</title>
+<style>
+  :root { --bg:#0b1230; --paper:#f6efdc; --ink:#1a1a1a; --dim:#5b5a55; --blue:#2f8fe8; --red:#e9475a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 "Comic Sans MS","Chalkboard SE","Comic Neue",cursive,sans-serif;
+         display:flex; flex-wrap:wrap; gap:22px; justify-content:center; align-items:flex-start; padding:20px; }
+  #bgc { position:fixed; inset:0; width:100vw; height:100vh; z-index:-1; }
+  canvas#c { width:min(92vw, 78vh, 700px); aspect-ratio:1; border-radius:14px; touch-action:none; cursor:grab;
+             border:4px solid #111; box-shadow:5px 6px 0 #0007; background:#0d1544; }
+  canvas#c.dragging { cursor:grabbing; }
+  #panel { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:310px; max-width:92vw;
+           box-shadow:5px 6px 0 #0007; }
+  h1 { margin:0 0 8px; font-size:26px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
+  #turn { font-weight:700; font-size:19px; margin-bottom:6px; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
+  #msg { min-height:44px; color:var(--dim); }
+  button { background:#ffd24d; color:var(--ink); border:3px solid #111; border-radius:10px; padding:6px 12px; font:inherit; font-weight:700;
+           cursor:pointer; margin:8px 4px 0 0; box-shadow:2px 3px 0 #111; }
+  button:hover { background:#ffe27f; } button:active { transform:translate(2px,3px); box-shadow:none; }
+  ul { padding-left:18px; margin:12px 0 0; color:var(--dim); font-size:13px; }
+  .k { display:inline-block; width:11px; height:11px; border:1.5px solid #111; border-radius:3px; margin-right:6px; }
+</style>
+</head>
+<body>
+<canvas id="bgc"></canvas>
+<canvas id="c" width="700" height="700"></canvas>
+<div id="panel">
+  <h1>ASTRO GAME</h1>
+  <div id="turn"></div>
+  <div id="msg"></div>
+  <label><input type="checkbox" id="ai" checked> AI plays Blue</label>
+  <label>&nbsp; look-ahead
+    <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select>
+    double moves</label><br>
+  <button id="reset">New game</button>
+  <button id="undo">Undo Blue move</button>
+  <button id="suggest">Suggest move</button>
+  <ul>
+    <li>Drag a piece, release to land it. Release on its own square to refuel (next to the sun, the fuel station).</li>
+    <li><span class="k" style="background:#3ddc84"></span>walk &nbsp;<span class="k" style="background:#35d0ff"></span>jump (1 fuel) &nbsp;<span class="k" style="background:#ff4d5e"></span>capture &nbsp;<span class="k" style="background:#ffa733"></span>push &nbsp;<span class="k" style="background:#ffe14d"></span>refuel</li>
+    <li><b>Astronaut</b>: step forward/sideways; jump like a knight over pieces (can't land on the enemy back row; no jump on the turn after landing). Capturing an astronaut steals 1 fuel. Reach the enemy Core to win.</li>
+    <li><b>Rover</b>: 1–2 squares straight, no jumping.</li>
+    <li><b>Drone</b>: up to 3 squares in any direction, no jumping; drop it on an enemy in range to push it one square away and take its square. A pushed piece is stunned for its next turn (zzz). Off the board, or into one of the drone's own pieces = captured.</li>
+  </ul>
+</div>
+
+<script>
+const N = 7, CELL = 100, MAXFUEL = 2;
+const HOME = [6, 0], DIR = [-1, 1];            // owner 0 = Blue (bottom), owner 1 = Red (top)
+const NAME = ['Blue', 'Red', 'Nobody'], COLOR = ['#2f8fe8', '#e9475a', '#6b6b6b'];
+const DRAW = 2;                                // value of `winner` when the game is drawn
+const KCOL = { walk:'#3ddc84', jump:'#35d0ff', capture:'#ff4d5e', push:'#ffa733', refuel:'#ffe14d' };
+const STATION = { x:3, y:3 };
+
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {};
+
+function newGame() {
+  history = []; hint = null; seen = {};
+  pieces = []; turn = 0; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
+  [0, 1].forEach(o => {
+    const h = HOME[o], f = h + DIR[o];            // f = row in front of home row
+    add('core', o, 3, h);
+    add('rover', o, 1, h);
+    add('drone', o, 5, h);
+    [2, 3, 4].forEach(x => add('astro', o, x, f));
+  });
+  seen[posKey()] = 1;
+  say('Blue moves first.');
+  updateUI();
+  maybeAI();
+}
+function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? 1 : 0, cd: 0, st: 0 }); }
+function say(t) { msg = t; document.getElementById('msg').textContent = t; }
+
+const at = (x, y) => pieces.find(p => p.x === x && p.y === y);
+const inB = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
+const isStation = (x, y) => x === STATION.x && y === STATION.y;
+const nearStation = p => Math.max(Math.abs(p.x - STATION.x), Math.abs(p.y - STATION.y)) === 1;
+
+function legal(p) {
+  const out = [], o = p.owner;
+  if (p.st > 0) return out;                          // stunned by a drone push
+  const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
+  if (p.type === 'astro') {
+    for (const [dx, dy] of [[0, DIR[o]], [-1, 0], [1, 0]]) {
+      const x = p.x + dx, y = p.y + dy;
+      if (!inB(x, y) || isStation(x, y)) continue;
+      const t = at(x, y);
+      if (t && t.owner === o) continue;
+      push(x, y, t ? 'capture' : 'walk');
+    }
+    if (p.fuel > 0 && p.cd === 0) {
+      for (const [dx, dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) {
+        const x = p.x + dx, y = p.y + dy;
+        if (!inB(x, y) || isStation(x, y) || y === HOME[1 - o]) continue;
+        const t = at(x, y);
+        if (t && t.owner === o) continue;
+        push(x, y, 'jump');
+      }
+    }
+    if (p.fuel < MAXFUEL && nearStation(p)) push(p.x, p.y, 'refuel');
+  } else if (p.type === 'rover') {
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      for (let s = 1; s <= 2; s++) {
+        const x = p.x + dx * s, y = p.y + dy * s;
+        if (!inB(x, y) || isStation(x, y)) break;
+        const t = at(x, y);
+        if (!t) { push(x, y, 'walk'); continue; }
+        if (t.owner !== o && t.type !== 'core') push(x, y, 'capture');
+        break;
+      }
+    }
+  } else if (p.type === 'drone') {
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+      for (let s = 1; s <= 3; s++) {
+        const x = p.x + dx * s, y = p.y + dy * s;
+        if (!inB(x, y) || isStation(x, y)) break;
+        const t = at(x, y);
+        if (!t) { push(x, y, 'walk'); continue; }
+        if (t.owner !== o && t.type !== 'core') {              // glide up to the enemy, then push it
+          const bx = x + dx, by = y + dy;
+          const b = inB(bx, by) && at(bx, by);                 // piece behind the target, if any
+          if (!inB(bx, by) || (!isStation(bx, by) && (!b || (b.owner === o && b.type !== 'core'))))   // blocked by the target's own side; the drone's own pieces crush it
+            push(x, y, 'push', { dx, dy });
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function step(p, m) {                              // mutates pieces/turn/winner, returns log text
+  let text = '';
+  if (m.kind === 'refuel') {
+    p.fuel++; text = `${NAME[p.owner]} astronaut refuels (${p.fuel}/${MAXFUEL}).`;
+  } else if (m.kind === 'push') {
+    const t = at(m.x, m.y), bx = m.x + m.dx, by = m.y + m.dy;
+    p.x = m.x; p.y = m.y;                             // drone takes the pushed piece's square
+    if (inB(bx, by) && !at(bx, by)) { t.x = bx; t.y = by; t.st = 1; text = `${NAME[p.owner]} drone pushes a ${t.type}.`; }
+    else if (inB(bx, by)) { pieces.splice(pieces.indexOf(t), 1); text = `${NAME[p.owner]} drone crushes a ${t.type} against a ${NAME[p.owner]} piece!`; }
+    else { pieces.splice(pieces.indexOf(t), 1); text = `${NAME[p.owner]} drone pushes a ${t.type} off the board!`; }
+  } else {
+    const t = at(m.x, m.y);
+    if (t) {
+      pieces.splice(pieces.indexOf(t), 1);
+      text = `${NAME[p.owner]} captures a ${t.type}.`;
+      if (p.type === 'astro' && t.type === 'astro' && t.fuel > 0) {
+        p.fuel = Math.min(MAXFUEL, p.fuel + 1); text += ' Fuel stolen!';
+      }
+      if (t.type === 'core') winner = p.owner;
+    }
+    p.x = m.x; p.y = m.y;
+    if (m.kind === 'jump') { p.fuel--; p.cd = 1; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
+  }
+  // landing cooldown clears after the owner's next turn
+  pieces.forEach(q => {
+    if (q.owner !== turn) return;
+    q.st = 0;                                        // stun lasts through the owner's next turn
+    if (q.cd > 0 && !(q === p && m.kind === 'jump')) q.cd = 0;
+  });
+  if (winner !== null) text = `${NAME[winner]} reached the Core and wins!`;
+  else {
+    turn = 1 - turn;
+    if (!pieces.some(q => q.type === 'astro')) { winner = DRAW; text += ' No astronauts left: nobody can win.'; }
+  }
+  return text;
+}
+function posKey() {
+  return turn + ':' + pieces.map(q => [q.type[0], q.owner, q.x, q.y, q.fuel, q.cd, q.st].join()).sort().join('|');
+}
+function drawCheck() {                             // stalemate and threefold repetition (real game only, not the search)
+  if (winner !== null) return '';
+  if (!pieces.some(q => q.owner === turn && legal(q).length)) { winner = DRAW; return ` ${NAME[turn]} has no legal move: draw.`; }
+  const k = posKey(); seen[k] = (seen[k] || 0) + 1;
+  if (seen[k] >= 3) { winner = DRAW; return ' Same position three times: draw.'; }
+  return '';
+}
+function apply(p, m, who) {
+  if (turn === 0) history.push({ pieces: pieces.map(q => ({ ...q })), turn, winner, lastMove, msg, seen: { ...seen } });   // undo point before each Blue move
+  hint = null;
+  lastMove = { from: [p.x, p.y], to: [m.x, m.y] };
+  const before = pieces.slice();
+  const text = step(p, m);
+  for (const q of before) if (!pieces.includes(q)) fx.push({ x: q.x, y: q.y, t0: performance.now() });
+  if (fx.length) kick();
+  say((who ? who + ': ' : '') + text + drawCheck());
+  updateUI();
+  maybeAI();
+}
+
+function updateUI() {
+  const el = document.getElementById('turn');
+  el.textContent = winner === DRAW ? 'Draw!' : winner !== null ? `${NAME[winner]} wins!` : `${NAME[turn]} to move` + (thinking ? ' (thinking…)' : '');
+  el.style.color = COLOR[winner !== null ? winner : turn];
+}
+
+// ---------- input ----------
+function cellOf(e) {
+  const r = cv.getBoundingClientRect();
+  const px = (e.clientX - r.left) * cv.width / r.width, py = (e.clientY - r.top) * cv.height / r.height;
+  return { px, py, x: Math.floor(px / CELL), y: Math.floor(py / CELL) };
+}
+cv.addEventListener('pointerdown', e => {
+  if (winner !== null || thinking || aiTurn()) return;
+  const c = cellOf(e), p = inB(c.x, c.y) && at(c.x, c.y);
+  if (!p || p.owner !== turn || p.type === 'core') return;
+  const moves = legal(p);
+  if (!moves.length) { say(p.st > 0 ? 'That piece is stunned this turn.' : 'That piece has no legal moves.'); return; }
+  drag = { p, moves, px: c.px, py: c.py };
+  cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
+  kick();
+});
+cv.addEventListener('pointermove', e => {
+  const c = cellOf(e); hover = { x: c.x, y: c.y };
+  if (drag) { drag.px = c.px; drag.py = c.py; }
+  draw();
+});
+cv.addEventListener('pointerup', e => {
+  if (!drag) return;
+  const c = cellOf(e), { p, moves } = drag;
+  drag = null; cv.classList.remove('dragging');
+  const m = moves.find(m => m.x === c.x && m.y === c.y);
+  if (m) apply(p, m);
+  else if (c.x !== p.x || c.y !== p.y) say('Illegal landing. Piece returned.');
+  draw();
+});
+cv.addEventListener('pointercancel', () => { drag = null; cv.classList.remove('dragging'); draw(); });
+document.getElementById('reset').onclick = () => { newGame(); draw(); };
+document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
+  if (thinking || winner !== null || aiTurn()) return;
+  thinking = true; updateUI();
+  setTimeout(() => {
+    const r = aiSearch(turn);
+    thinking = false; updateUI();
+    if (!r.mv) { say('No legal moves.'); return; }
+    const p = pieces[r.mv.i], m = r.mv.m;
+    hint = { from: [p.x, p.y], to: [m.x, m.y] };
+    const what = { astro: 'astronaut', rover: 'rover', drone: 'drone' }[p.type];
+    say(`Suggestion: ${what} ${m.kind} (${r.depth} plies deep). Shown in yellow.`);
+    draw();
+  }, 50);
+};
+document.getElementById('undo').onclick = () => {   // back to the position before Blue's last move (drops Red's reply too)
+  if (thinking || !history.length) { say('Nothing to undo.'); return; }
+  const h = history.pop();
+  pieces = h.pieces; turn = h.turn; winner = h.winner; lastMove = h.lastMove; drag = null; hint = null; seen = h.seen;
+  aiBox.checked = false;                             // otherwise the AI would instantly replay Blue's move
+  say('Blue move undone. AI is off, so you play Blue now; tick "AI plays Blue" to hand it back.');
+  updateUI(); draw();
+};
+
+// ---------- art ("Der Kleine Astronaut" crayon style) ----------
+const ART = {};
+const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = 'art/' + file; ART[key] = im; };
+loadArt('sheet', 'AstroAnimsheet.png'); loadArt('sheetRed', 'AstroAnimsheetRed.png');
+loadArt('shipBlue', 'AstroShipBlue.png'); loadArt('shipRed', 'AstroShipRed.png');
+loadArt('fire', 'AstroFire.png'); loadArt('expl', 'AstroExplosion.png'); loadArt('bg', 'AstroBG.png');
+// source rectangles [x, y, w, h] inside the sheets
+const R = {
+  front: [205, 0, 108, 160], wave: [514, 0, 116, 160],
+  flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]],
+  boom: [[14, 0, 299, 200], [324, 0, 184, 200], [520, 0, 179, 200], [709, 0, 146, 200], [875, 0, 87, 200], [967, 0, 18, 200]],
+  sun: [2, 3, 115, 112], neptune: [217, 96, 73, 74], mars: [13, 114, 62, 62],
+  deco: [[115, 15, 131, 83], [249, 17, 75, 77], [331, 17, 47, 47], [297, 119, 54, 54], [85, 102, 123, 74],
+         [6, 180, 66, 69], [74, 167, 36, 34], [140, 185, 28, 29], [178, 153, 46, 48], [232, 186, 34, 36],
+         [270, 168, 35, 36], [321, 72, 40, 39], [85, 203, 47, 47], [181, 208, 41, 41], [276, 187, 99, 64]],
+};
+// draw sprite rect `r` of image `im`, scaled to height h, centered on cx with its bottom at by
+function sprite(im, r, cx, by, h) {
+  if (!im || !im.complete || !im.naturalWidth) return;
+  const w = r[2] * h / r[3];
+  g.drawImage(im, r[0], r[1], r[2], r[3], cx - w / 2, by - h, w, h);
+}
+function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+
+// crayon look for hand-drawn shapes: flat colour, diagonal hatch, thick black outline
+function crayon(path, color, lw = 3.5) {
+  g.save(); g.beginPath(); path(); g.fillStyle = color; g.fill(); g.clip();
+  g.strokeStyle = '#ffffff40'; g.lineWidth = 1.5;
+  for (let i = -120; i < 120; i += 7) { g.beginPath(); g.moveTo(i, 120); g.lineTo(i + 120, 0); g.stroke(); }
+  g.restore();
+  g.beginPath(); path(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#111'; g.stroke();
+}
+function drawRover(cx, by, s, col) {                 // moon rover, drawn in the same style
+  g.save(); g.translate(cx, by); g.scale(s, s);
+  const rr = (x, y, w, h, r) => () => { g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); };
+  g.strokeStyle = '#111'; g.lineWidth = 3; g.beginPath(); g.moveTo(-18, -34); g.lineTo(-24, -58); g.stroke();   // antenna
+  crayon(() => g.arc(-24, -60, 7, 0, 7), '#d8d3c4', 2.5);
+  crayon(() => { g.arc(10, -34, 17, Math.PI, 0); g.closePath(); }, '#2fa8f0');                              // cockpit bubble
+  g.fillStyle = '#ffffffcc'; g.beginPath(); g.ellipse(4, -43, 4, 7, -.5, 0, 7); g.fill();
+  crayon(rr(-34, -36, 68, 24, 10), col);                                                                     // body
+  for (const wx of [-24, 0, 24]) {                                                                           // wheels
+    crayon(() => g.arc(wx, -10, 11, 0, 7), '#8d8d8d');
+    crayon(() => g.arc(wx, -10, 4, 0, 7), '#d9d9d9', 2);
+  }
+  g.restore();
+}
+function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
+
+// ---------- static layers ----------
+let boardLayer = null, boardLayerArt = false;
+function makeBoardLayer() {
+  const c = document.createElement('canvas'); c.width = c.height = 700; const k = c.getContext('2d'), rnd = seeded(7);
+  const sky = k.createRadialGradient(350, 350, 40, 350, 350, 520);   // deep space, a touch lighter in the middle
+  sky.addColorStop(0, '#26357f'); sky.addColorStop(1, '#0d1544');
+  k.fillStyle = sky; k.fillRect(0, 0, 700, 700);
+  k.strokeStyle = '#ffffff10'; k.lineWidth = 2;                       // crayon scribble over the sky
+  for (let i = 0; i < 90; i++) { const x = rnd() * 760 - 30, y = rnd() * 700; k.beginPath(); k.moveTo(x, y + 60); k.lineTo(x + 70, y); k.stroke(); }
+  if (ART.bg.complete && ART.bg.naturalWidth) {                       // planets, stars and rocks floating behind the cells
+    boardLayerArt = true;
+    for (let i = 0; i < 17; i++) {
+      const r = R.deco[Math.floor(rnd() * R.deco.length)], big = r[2] > 100 || r[3] > 100;
+      const hh = (big ? 90 : 34) + rnd() * (big ? 90 : 36), ww = r[2] * hh / r[3], x = 40 + rnd() * 620, y = 40 + rnd() * 620;
+      if (Math.hypot(x - 350, y - 350) < 120) continue;               // keep the sun's neighbourhood clear
+      k.save(); k.translate(x, y); k.rotate((rnd() - .5) * .9); k.globalAlpha = .75;
+      k.drawImage(ART.bg, r[0], r[1], r[2], r[3], -ww / 2, -hh / 2, ww, hh); k.restore();
+    }
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {           // translucent cells: visible, but the scene shows through
+    const near = Math.max(Math.abs(x - STATION.x), Math.abs(y - STATION.y)) === 1;
+    k.fillStyle = (x + y) % 2 ? '#9db6ea99' : '#e4ecfb99';
+    k.fillRect(x * CELL, y * CELL, CELL, CELL);
+    if (y === HOME[0]) { k.fillStyle = '#3aa0ff88'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }
+    if (y === HOME[1]) { k.fillStyle = '#ff5a6e88'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }
+    if (near) { k.fillStyle = '#ffe14d66'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }   // refuel zone
+  }
+  k.strokeStyle = '#1a2766aa'; k.lineWidth = 2;
+  for (let i = 1; i < N; i++) { k.beginPath(); k.moveTo(i * CELL, 0); k.lineTo(i * CELL, 700); k.moveTo(0, i * CELL); k.lineTo(700, i * CELL); k.stroke(); }
+  return c;
+}
+const bgc = document.getElementById('bgc');
+function drawSpace() {                               // sticker sheet of planets, stars and rocks behind the page
+  const w = bgc.width = innerWidth, h = bgc.height = innerHeight, k = bgc.getContext('2d'), rnd = seeded(11);
+  if (!ART.bg.complete || !ART.bg.naturalWidth) return;
+  for (let i = 0; i < 38; i++) {
+    const r = R.deco[Math.floor(rnd() * R.deco.length)], big = r[2] > 100 || r[3] > 100;
+    const hh = (big ? 70 : 24) + rnd() * (big ? 70 : 30), ww = r[2] * hh / r[3], x = rnd() * w, y = rnd() * h;
+    k.save(); k.translate(x, y); k.rotate((rnd() - .5) * .8); k.globalAlpha = .85;
+    k.drawImage(ART.bg, r[0], r[1], r[2], r[3], -ww / 2, -hh / 2, ww, hh); k.restore();
+  }
+}
+function redrawAll() { drawSpace(); if (pieces) draw(); }
+addEventListener('resize', drawSpace);
+
+// ---------- effects ----------
+const fx = [];                                       // capture explosions: { x, y, t0 }
+const FX_MS = 650;
+let looping = false;
+function loop() {
+  const now = performance.now();
+  for (let i = fx.length - 1; i >= 0; i--) if (now - fx[i].t0 > FX_MS) fx.splice(i, 1);
+  draw();
+  if (fx.length || drag) requestAnimationFrame(loop); else looping = false;
+}
+function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
+
+// ---------- drawing ----------
+function draw() {
+  const now = performance.now();
+  g.clearRect(0, 0, 700, 700);
+  if (!boardLayer || (!boardLayerArt && ART.bg.complete)) boardLayer = makeBoardLayer();
+  g.drawImage(boardLayer, 0, 0);
+  sprite(ART.bg, R.sun, STATION.x * CELL + 50, STATION.y * CELL + 96, 92);   // the sun is the fuel station
+
+  if (hint) {                                        // suggested move: arrow + target outline
+    const [x0, y0] = hint.from.map(v => v * CELL + 50), [x1, y1] = hint.to.map(v => v * CELL + 50);
+    for (const [col, lw] of [['#111', 11], ['#ffd24d', 5]]) {
+      g.strokeStyle = g.fillStyle = col; g.lineWidth = lw; g.lineJoin = 'round';
+      g.strokeRect(hint.to[0] * CELL + 4, hint.to[1] * CELL + 4, CELL - 8, CELL - 8);
+      if (x0 !== x1 || y0 !== y1) {
+        const a = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0), ex = x1 - Math.cos(a) * 40, ey = y1 - Math.sin(a) * 40;
+        g.beginPath(); g.moveTo(x0 + Math.cos(a) * 34, y0 + Math.sin(a) * 34);
+        if (len > 80) g.lineTo(ex, ey); g.stroke();
+        g.beginPath(); g.moveTo(ex + Math.cos(a) * 14, ey + Math.sin(a) * 14);
+        g.lineTo(ex + Math.cos(a + 2.4) * 20, ey + Math.sin(a + 2.4) * 20);
+        g.lineTo(ex + Math.cos(a - 2.4) * 20, ey + Math.sin(a - 2.4) * 20); g.closePath(); g.fill(); if (col === '#111') g.stroke();
+      }
+    }
+  }
+  if (lastMove) {                                    // last move outline
+    g.setLineDash([8, 6]);
+    for (const [col, lw] of [['#111', 5.5], ['#fff', 2.5]]) {
+      g.strokeStyle = col; g.lineWidth = lw;
+      for (const [x, y] of [lastMove.from, lastMove.to]) g.strokeRect(x * CELL + 4, y * CELL + 4, CELL - 8, CELL - 8);
+    }
+    g.setLineDash([]);
+  }
+  if (drag) for (const m of drag.moves) {            // legal-move hints
+    const x = m.x * CELL, y = m.y * CELL;
+    g.fillStyle = KCOL[m.kind] + '77'; g.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
+    g.setLineDash([9, 5]);
+    g.strokeStyle = '#111'; g.lineWidth = 6; g.strokeRect(x + 6, y + 6, CELL - 12, CELL - 12);
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(x + 6, y + 6, CELL - 12, CELL - 12); g.setLineDash([]);
+    if (m.kind === 'jump') {                           // trajectory arc
+      const x0 = drag.p.x * CELL + 50, y0 = drag.p.y * CELL + 50, x1 = x + 50, y1 = y + 50;
+      g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo((x0 + x1) / 2, Math.min(y0, y1) - 50, x1, y1);
+      g.setLineDash([6, 6]); g.strokeStyle = '#111'; g.lineWidth = 6; g.stroke(); g.strokeStyle = '#9fe3ff'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
+    }
+  }
+  if (drag && hover && inB(hover.x, hover.y)) {
+    g.strokeStyle = '#111'; g.lineWidth = 7; g.strokeRect(hover.x * CELL + 2, hover.y * CELL + 2, CELL - 4, CELL - 4);
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(hover.x * CELL + 2, hover.y * CELL + 2, CELL - 4, CELL - 4);
+  }
+
+  for (const p of pieces) {
+    if (drag && drag.p === p) { g.globalAlpha = .3; drawPiece(p, p.x * CELL + 50, p.y * CELL + 50, 1, false, now); g.globalAlpha = 1; }
+    else drawPiece(p, p.x * CELL + 50, p.y * CELL + 50, 1, false, now);
+  }
+  if (drag) drawPiece(drag.p, drag.px, drag.py - 10, 1.25, true, now);
+  for (const e of fx) {                              // capture explosions
+    const f = Math.min(5, Math.floor((now - e.t0) / FX_MS * 6));
+    sprite(ART.expl, R.boom[f], e.x * CELL + 50, e.y * CELL + 95, 100);
+  }
+  if (winner !== null) {
+    g.fillStyle = '#f6efdc'; g.strokeStyle = '#111'; g.lineWidth = 6;
+    g.beginPath(); g.roundRect(60, 255, 580, 190, 26); g.fill(); g.stroke();
+    g.font = 'bold 62px "Comic Sans MS","Chalkboard SE",cursive'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineJoin = 'round'; g.strokeStyle = '#111'; g.lineWidth = 9; g.strokeText(winner === DRAW ? 'Draw!' : `${NAME[winner]} wins!`, 350, 350);
+    g.fillStyle = COLOR[winner]; g.fillText(winner === DRAW ? 'Draw!' : `${NAME[winner]} wins!`, 350, 350);
+  }
+}
+
+function drawPiece(p, cx, cy, s, lifted, now) {
+  const o = p.owner, by = cy + 36 * s;               // by = feet line
+  g.save();
+  // team-coloured crayon base + soft shadow so every piece is readable on any square
+  g.fillStyle = '#0003'; g.beginPath(); g.ellipse(cx + 3 * s, by + 4 * s, 34 * s, 10 * s, 0, 0, 7); g.fill();
+  crayon(() => g.ellipse(cx, by, 34 * s, 10 * s, 0, 0, 7), COLOR[o], 3);
+  if (p.type === 'astro' && p.cd > 0) {              // landed: can't jump next turn
+    g.setLineDash([5, 5]); g.lineWidth = 2.5;
+    g.beginPath(); g.ellipse(cx, by, 41 * s, 14 * s, 0, 0, 7); g.strokeStyle = '#111'; g.stroke(); g.setLineDash([]);
+  }
+  if (p.st > 0) g.filter = 'grayscale(.7) brightness(.85)';   // stunned: washed out
+  if (p.type === 'astro') {
+    if (lifted && p.fuel > 0 && p.cd === 0) drawFlame(cx - 14 * s, by + 2 * s, 24 * s, now);   // jetpack flame while airborne
+    sprite(o === 0 ? ART.sheet : ART.sheetRed, lifted ? R.wave : R.front, cx, by + 2 * s, 84 * s);
+  } else if (p.type === 'drone') {
+    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, o === 0 ? 61 : 143, 160], cx, by + 2 * s, 76 * s);
+  } else if (p.type === 'rover') {
+    drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
+  } else {                                           // core: a planet
+    sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s, 80 * s);
+  }
+  g.filter = 'none';
+  if (p.st > 0) {                                    // zzz in crayon lettering
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 5; g.strokeStyle = '#111'; g.fillStyle = '#fff';
+    for (const [t, dx, dy, k] of [['z', .35, -.2, .8], ['z', .6, -.62, 1], ['Z', .85, -1.1, 1.25]]) {
+      g.font = `bold ${26 * k * s}px "Comic Sans MS","Chalkboard SE",cursive`;
+      g.strokeText(t, cx + 38 * dx * s, cy + 38 * dy * s); g.fillText(t, cx + 38 * dx * s, cy + 38 * dy * s);
+    }
+  }
+  if (p.type === 'astro') {                          // fuel = little flames next to the feet
+    for (let i = 0; i < MAXFUEL; i++) {
+      if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
+      sprite(ART.fire, R.flame[0], cx + (i ? 33 : -33) * s, by + 10 * s, 24 * s);
+      g.filter = 'none';
+    }
+  }
+  g.restore();
+}
+
+// ---------- AI (plays Blue): iterative-deepening minimax with alpha-beta ----------
+const aiBox = document.getElementById('ai'), aiDepth = document.getElementById('depth');
+const PRIO = { capture: 0, push: 1, jump: 2, walk: 3, refuel: 4 };
+const AI_MS = 2500;                                // time budget per move
+const AI_NOISE = 6;                                // random leaf-score jitter so games vary
+let aiDeadline = 0, aiNodes = 0, aiSide = 0;
+
+const aiTurn = () => aiBox.checked && turn === 0 && winner === null;
+aiBox.onchange = maybeAI;
+
+function maybeAI() {
+  if (!aiTurn()) return;
+  thinking = true; updateUI();
+  setTimeout(() => {                               // let the browser paint first
+    const r = aiSearch();
+    thinking = false;
+    apply(pieces[r.mv.i], r.mv.m, `Blue AI (${r.depth} plies)`);
+    draw();
+  }, 50);
+}
+
+function inState(s, fn) {                          // run engine code (legal/step) on a cloned state
+  const sp = pieces, st = turn, sw = winner;
+  pieces = s.pieces; turn = s.turn; winner = s.winner;
+  try { return fn(); } finally { pieces = sp; turn = st; winner = sw; }
+}
+function genMoves(s) {
+  return inState(s, () => {
+    const out = [];
+    s.pieces.forEach((p, i) => { if (p.owner === s.turn) for (const m of legal(p)) out.push({ i, m }); });
+    return out.sort((a, b) => PRIO[a.m.kind] - PRIO[b.m.kind]);
+  });
+}
+function child(s, mv) {
+  const c = { pieces: s.pieces.map(p => ({ ...p })), turn: s.turn, winner: s.winner };
+  inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
+  return c;
+}
+function evaluate(s) {                             // positive = good for Blue
+  let v = 0;
+  for (const p of s.pieces) {
+    let x = 0;
+    if (p.type === 'astro') {
+      const adv = p.owner === 0 ? 6 - p.y : p.y;
+      const toCore = Math.abs(p.x - 3) + Math.abs(p.y - HOME[1 - p.owner]);
+      x = 100 + 14 * p.fuel + 9 * adv - 2 * Math.abs(p.x - 3)
+        + 3 * Math.max(0, 6 - toCore)                    // close to the enemy Core
+        + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0);  // can refuel next turn
+    } else if (p.type === 'rover') x = 45 + (nearStation(p) ? 10 : 0);   // rover guards the station
+    else if (p.type === 'drone') x = 40;
+    v += p.owner === 0 ? x : -x;
+  }
+  return v;
+}
+function minimax(s, depth, alpha, beta, ply) {
+  if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
+  if (s.winner !== null) return s.winner === DRAW ? 0 : s.winner === aiSide ? 100000 - ply : ply - 100000;
+  const leaf = () => (aiSide === 0 ? 1 : -1) * evaluate(s) + (Math.random() - .5) * AI_NOISE;
+  if (depth === 0) return leaf();
+  const moves = genMoves(s);
+  if (!moves.length) return 0;                     // stalemate = draw
+  if (s.turn === aiSide) {
+    let best = -Infinity;
+    for (const mv of moves) {
+      best = Math.max(best, minimax(child(s, mv), depth - 1, alpha, beta, ply + 1));
+      alpha = Math.max(alpha, best); if (alpha >= beta) break;
+    }
+    return best;
+  }
+  let best = Infinity;
+  for (const mv of moves) {
+    best = Math.min(best, minimax(child(s, mv), depth - 1, alpha, beta, ply + 1));
+    beta = Math.min(beta, best); if (alpha >= beta) break;
+  }
+  return best;
+}
+function aiSearch(side = 0) {
+  aiSide = side;
+  const root = { pieces: pieces.map(p => ({ ...p })), turn, winner };
+  const moves = genMoves(root), maxPlies = 2 * +aiDepth.value;
+  aiDeadline = performance.now() + AI_MS; aiNodes = 0;
+  let best = moves[0], done = 0;
+  for (let d = 1; d <= maxPlies; d++) {
+    try {
+      let bv = -Infinity, bm = null;
+      for (const mv of moves) {
+        mv.v = minimax(child(root, mv), d - 1, bv, Infinity, 1);
+        if (mv.v > bv) { bv = mv.v; bm = mv; }
+      }
+      best = bm; done = d;
+      moves.sort((a, b) => b.v - a.v);             // best first for the next, deeper pass
+      if (bv > 90000) break;                       // forced win found
+    } catch (e) { if (e !== 'timeout') throw e; break; }
+  }
+  return { mv: best, depth: done };
+}
+
+
+
+newGame(); draw();
+</script>
+</body>
+</html>
