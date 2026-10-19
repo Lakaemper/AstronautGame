@@ -10,7 +10,7 @@
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 "Comic Sans MS","Chalkboard SE","Comic Neue",cursive,sans-serif;
          display:flex; flex-wrap:wrap; gap:22px; justify-content:center; align-items:flex-start; padding:20px; }
   #bgc { position:fixed; inset:0; width:100vw; height:100vh; z-index:-1; }
-  canvas#c { width:min(96vw, 1440px); aspect-ratio:1440/734; border-radius:14px; touch-action:none; cursor:grab;
+  canvas#c { width:min(96vw, calc(100vh - 48px), 900px); aspect-ratio:1/1; border-radius:14px; touch-action:none; cursor:grab;
              border:4px solid #111; box-shadow:5px 6px 0 #0007; background:#0d1544; }
   canvas#c.dragging { cursor:grabbing; }
   #panel { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:310px; max-width:92vw;
@@ -18,6 +18,7 @@
   h1 { margin:0 0 8px; font-size:26px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
   #turn { font-weight:700; font-size:19px; margin-bottom:6px; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
   #msg { min-height:44px; color:var(--dim); }
+  #aiinfo { white-space:pre-line; margin-top:10px; padding:6px 10px; min-height:4.8em; background:#fffbea; border:2px solid #111; border-radius:8px; font:12px/1.4 Consolas,monospace; color:var(--dim); }
   button { background:#ffd24d; color:var(--ink); border:3px solid #111; border-radius:10px; padding:6px 12px; font:inherit; font-weight:700;
            cursor:pointer; margin:8px 4px 0 0; box-shadow:2px 3px 0 #111; }
   button:hover { background:#ffe27f; } button:active { transform:translate(2px,3px); box-shadow:none; }
@@ -27,70 +28,43 @@
 </head>
 <body>
 <canvas id="bgc"></canvas>
-<canvas id="c" width="1440" height="734"></canvas>
+<canvas id="c" width="900" height="900"></canvas>
 <div id="panel">
   <h1>ASTRO GAME</h1>
   <div id="turn"></div>
   <div id="msg"></div>
   <label>Players <select id="role"><option value="red" selected>Human: Red (AI plays Blue)</option><option value="blue">Human: Blue (AI plays Red)</option><option value="none">No human (AI plays both)</option><option value="two">Two humans</option></select></label><br>
   <label>&nbsp; look-ahead
-    <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select>
+    <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select>
     double moves</label><br>
   <button id="reset">New game</button>
-  <button id="undo">Undo Blue move</button>
+  <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
+  <div id="aiinfo">AI search: no move computed yet.</div>
   <ul>
     <li>Drag a piece, release to land it. Release on its own square to refuel (next to the sun, the fuel station).</li>
-    <li><span class="k" style="background:#3ddc84"></span>walk &nbsp;<span class="k" style="background:#35d0ff"></span>jump (1 fuel) &nbsp;<span class="k" style="background:#ff4d5e"></span>capture &nbsp;<span class="k" style="background:#ffa733"></span>push &nbsp;<span class="k" style="background:#ffe14d"></span>refuel &nbsp;<span class="k" style="background:#b06cff"></span>wormhole</li>
-    <li><b>Astronaut</b>: step forward/sideways; jump like a knight over pieces (not onto a wormhole or Core; no jump on the turn after landing). Capturing an astronaut steals 1 fuel.</li>
-    <li><b>Two fields.</b> On field 1 the Cores are <b>wormholes</b>: walk an astronaut onto the enemy wormhole and it beams to your baseline on field 2 (next to your Core, squares in the order east, middle, west; blocked if all three are taken). It arrives <b>without fuel</b> and is <b>shielded</b> for the enemy's next turn. To win, reach the enemy Core on field 2. Field 2 has its own sun and one drone per side, standing in front of the Core. Each turn you move one piece on <i>either</i> field.</li>
-    <li><b>Rover</b>: 1–2 squares straight, no jumping. It also has a <b>laser</b> (faint glow = its aim): <b>right-click</b> the rover to fire in its facing direction, or <b>right-drag</b> toward a side to turn the laser that way. Turning is one move and firing is another. A beam that hits a rover (either side) burns out <b>both</b> lasers for good. The beam destroys the first astronaut (either side, unless shielded) or drone in line. It stops at the sun, wormholes, Cores and rovers without harming them.</li>
+    <li><span class="k" style="background:#3ddc84"></span>walk &nbsp;<span class="k" style="background:#35d0ff"></span>jump (1 fuel) &nbsp;<span class="k" style="background:#ff4d5e"></span>capture &nbsp;<span class="k" style="background:#ffa733"></span>push &nbsp;<span class="k" style="background:#ffe14d"></span>refuel &nbsp;<span class="k" style="background:#ff9de2"></span>take fuel from a vehicle</li>
+    <li><b>Goal:</b> walk an astronaut onto the enemy <b>Core</b> (the planet on its baseline). Rovers and drones cannot win.</li>
+    <li><b>Astronaut</b>: step forward/sideways; jump like a knight over pieces (not onto a Core; needs 1 fuel). Capturing an astronaut steals 1 fuel.</li>
+    <li><b>Rover and drone</b> carry one unit of fuel (they start with it and refuel at the sun like astronauts). An astronaut next to one of its own vehicles (also diagonally) can drag onto it to take that unit: it only refuels, the astronaut stays where it is.</li>
+    <li><b>Rover</b>: 1–2 squares straight, no jumping. It also has a <b>laser</b> (faint glow = its aim): <b>right-click</b> the rover to fire in its facing direction, or <b>right-drag</b> toward a side to turn the laser that way. Turning is one move and firing is another. The beam destroys the first astronaut, drone or rover in line (either side, the shooter stays intact), so in a rover duel the first to shoot wins. It stops at the sun and Cores without harming them.</li>
     <li><b>Drone</b>: up to 3 squares in any direction, no jumping; drop it on an enemy in range to push it one square away and take its square. A pushed piece is stunned for its next turn (zzz). Off the board, or into one of the drone's own pieces = captured.</li>
   </ul>
 </div>
 
-<script>
-const N = 7, CELL = 100, MAXFUEL = 2;
-const HOME = [6, 0], DIR = [-1, 1];            // owner 0 = Blue (bottom), owner 1 = Red (top)
+<script id="engine">
+// Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
+const N = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 2, VEH_FUEL = 1;   // rovers and drones carry one unit, which they can pass to a neighbouring astronaut
+const HOME = [8, 0], DIR = [-1, 1];            // owner 0 = Blue (bottom), owner 1 = Red (top)
 const NAME = ['Blue', 'Red', 'Nobody'], COLOR = ['#2f8fe8', '#e9475a', '#6b6b6b'];
 const DRAW = 2;                                // value of `winner` when the game is drawn
-const KCOL = { walk:'#3ddc84', jump:'#35d0ff', capture:'#ff4d5e', push:'#ffa733', refuel:'#ffe14d', warp:'#b06cff' };
-const STATION = { x:3, y:3 };                  // the sun sits in the middle of both fields
-const GAP = 40, HDR = 34, W = 2 * N * CELL + GAP, H = N * CELL + HDR;
-const OFFX = f => f * (N * CELL + GAP);        // field 0 on the left, field 1 on the right
-const ARRIVE = [[[4, 6], [3, 5], [2, 6]], [[4, 0], [3, 1], [2, 0]]];   // beam-in squares on field 2 per owner: east, middle, west
-const fixed = t => t.type === 'core' || t.type === 'worm';
+const KCOL = { walk:'#3ddc84', jump:'#35d0ff', capture:'#ff4d5e', push:'#ffa733', refuel:'#ffe14d', feed:'#ff9de2' };
+const STATION = { x:4, y:4 };                  // the sun sits in the middle of the board
+const W = N * CELL, H = N * CELL, MID = (N - 1) / 2;
+const fixed = t => t.type === 'core';
 const DIRS4 = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // rover facing: up, right, down, left
 
-const cv = document.getElementById('c'), g = cv.getContext('2d');
-let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {}, aim = null;
-const anims = new Map();                        // piece -> running move animation
-let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
-const busy = () => performance.now() < animUntil;
-
-function newGame() {
-  history = []; hint = null; seen = {}; aim = null;
-  anims.clear(); ghosts = []; animUntil = 0; fx.length = 0; aiPending = false; aiGen++;
-  pieces = []; turn = 0; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
-  [0, 1].forEach(o => {
-    const h = HOME[o], r = h + DIR[o];            // r = row in front of home row
-    add('worm', o, 3, h, 0);                      // field 1: the Core square is a wormhole
-    add('rover', o, 1, h, 0);
-    add('drone', o, 5, h, 0);
-    [2, 3, 4].forEach(x => add('astro', o, x, r, 0));
-    add('core', o, 3, h, 1);                      // field 2: a real Core with a drone standing in front of it
-    add('drone', o, 3, r, 1);
-  });
-  seen[posKey()] = 1;
-  say('Blue moves first.');
-  updateUI();
-  maybeAI();
-}
-function add(type, owner, x, y, f) { pieces.push({ type, owner, x, y, f, fuel: type === 'astro' ? 1 : 0, cd: 0, st: 0, sh: 0, dir: owner === 0 ? 0 : 2 }); }   // dir: rover aim, forward at the start
-function say(t) { msg = t; document.getElementById('msg').textContent = t; }
-
-const at = (x, y, f) => pieces.find(p => p.x === x && p.y === y && p.f === f);
-const arrival = o => ARRIVE[o].find(([x, y]) => !at(x, y, 1));   // first free beam-in square on field 2
+const at = (x, y) => pieces.find(p => p.x === x && p.y === y);
 const inB = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
 const isStation = (x, y) => x === STATION.x && y === STATION.y;
 const nearStation = p => Math.max(Math.abs(p.x - STATION.x), Math.abs(p.y - STATION.y)) === 1;
@@ -101,38 +75,39 @@ function beamTrace(p, dx, dy) {                    // where a laser shot from ro
     x += dx; y += dy;
     const stop = { ex: x + .5 - dx * .5, ey: y + .5 - dy * .5, victim: null };   // beam end in cell units: edge of the blocker
     if (!inB(x, y) || isStation(x, y)) return stop;
-    const t = at(x, y, p.f);
+    const t = at(x, y);
     if (!t) continue;
-    if (t.type === 'drone' || (t.type === 'astro' && !t.sh)) return { ex: x + .5, ey: y + .5, victim: t };
-    if (t.type === 'astro') continue;                // shielded astronaut: the beam passes through
-    return t.type === 'rover' ? { ...stop, rover: t } : stop;   // wormhole, Core, or a rover (a laser duel)
+    if (t.type === 'drone' || t.type === 'astro' || t.type === 'rover') return { ex: x + .5, ey: y + .5, victim: t };
+    return stop;                                     // a Core
   }
 }
 
 function legal(p) {
   const out = [], o = p.owner;
   if (p.st > 0) return out;                          // stunned by a drone push
-  const A = (x, y) => at(x, y, p.f);
+  const A = (x, y) => at(x, y);
   const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
+  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < VEH_FUEL && nearStation(p)) push(p.x, p.y, 'refuel');   // vehicles refuel at the sun too
   if (p.type === 'astro') {
     for (const [dx, dy] of [[0, DIR[o]], [-1, 0], [1, 0]]) {
       const x = p.x + dx, y = p.y + dy;
       if (!inB(x, y) || isStation(x, y)) continue;
       const t = A(x, y);
-      if (t && (t.owner === o || t.sh > 0)) continue;                  // own piece, or shielded after beaming in
-      if (t && t.type === 'worm') { if (arrival(o)) push(x, y, 'warp'); continue; }
+      if (t && t.owner === o) continue;                                // own piece
       push(x, y, t ? 'capture' : 'walk');
     }
-    if (p.fuel > 0 && p.cd === 0) {
+    if (p.fuel > 0) {
       for (const [dx, dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) {
         const x = p.x + dx, y = p.y + dy;
         if (!inB(x, y) || isStation(x, y)) continue;
         const t = A(x, y);
-        if (t && (t.owner === o || t.sh > 0 || fixed(t))) continue;   // no jumping into a wormhole or onto a Core
+        if (t && (t.owner === o || fixed(t))) continue;   // no jumping onto a Core
         push(x, y, 'jump');
       }
     }
     if (p.fuel < MAXFUEL && nearStation(p)) push(p.x, p.y, 'refuel');
+    if (p.fuel < MAXFUEL) for (const v of pieces)                      // feed: take the fuel pack of an own rover/drone in the 8-neighbourhood (the astronaut stays put)
+      if (v.owner === o && (v.type === 'rover' || v.type === 'drone') && v.fuel > 0 && Math.max(Math.abs(v.x - p.x), Math.abs(v.y - p.y)) === 1) push(v.x, v.y, 'feed');
   } else if (p.type === 'rover') {
     for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
       for (let s = 1; s <= 2; s++) {
@@ -140,11 +115,11 @@ function legal(p) {
         if (!inB(x, y) || isStation(x, y)) break;
         const t = A(x, y);
         if (!t) { push(x, y, 'walk'); continue; }
-        if (t.owner !== o && !fixed(t) && !t.sh) push(x, y, 'capture');
+        if (t.owner !== o && !fixed(t)) push(x, y, 'capture');
         break;
       }
     }
-    if (!p.nolaser) DIRS4.forEach(([dx, dy], i) => {  // a shot that hits something goes in the current facing; turning toward a target is a move of its own
+    DIRS4.forEach(([dx, dy], i) => {  // a shot that hits something goes in the current facing; turning toward a target is a move of its own
       const v = beamTrace(p, dx, dy).victim;
       if (v) push(v.x, v.y, i === p.dir ? 'laser' : 'aim', { dx, dy });
     });
@@ -155,7 +130,7 @@ function legal(p) {
         if (!inB(x, y) || isStation(x, y)) break;
         const t = A(x, y);
         if (!t) { push(x, y, 'walk'); continue; }
-        if (t.owner !== o && !fixed(t) && !t.sh) {                     // glide up to the enemy, then push it
+        if (t.owner !== o && !fixed(t)) {                     // glide up to the enemy, then push it
           const bx = x + dx, by = y + dy;
           const b = inB(bx, by) && A(bx, by);                          // piece behind the target, if any
           if (!inB(bx, by) || (!isStation(bx, by) && (!b || (b.owner === o && !fixed(b)))))   // blocked by the target's own side; the drone's own pieces crush it
@@ -171,24 +146,23 @@ function legal(p) {
 const what = t => t.type === 'astro' ? 'an astronaut' : 'a ' + t.type;   // for log messages
 function step(p, m) {                              // mutates pieces/turn/winner, returns log text
   let text = '';
-  const A = (x, y) => at(x, y, p.f);
+  const A = (x, y) => at(x, y);
   if (m.kind === 'refuel') {
-    p.fuel++; text = `${NAME[p.owner]} astronaut refuels (${p.fuel}/${MAXFUEL}).`;
+    p.fuel++; text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} refuels (${p.fuel}/${p.type === 'astro' ? MAXFUEL : VEH_FUEL}).`;
+  } else if (m.kind === 'feed') {                   // the astronaut takes the vehicle's fuel pack; nobody moves
+    const v = A(m.x, m.y); v.fuel--; p.fuel++;
+    text = `${NAME[p.owner]} astronaut refuels from the ${v.type} (${p.fuel}/${MAXFUEL}).`;
   } else if (m.kind === 'aim') {                    // turning the laser is a whole move; the shot comes later
     p.dir = DIRS4.findIndex(([a, b]) => a === m.dx && b === m.dy);
     text = `${NAME[p.owner]} rover turns its laser.`;
   } else if (m.kind === 'laser') {
     p.dir = DIRS4.findIndex(([a, b]) => a === m.dx && b === m.dy);
     const tr = beamTrace(p, m.dx, m.dy), v = tr.victim;
-    if (tr.rover) {                                  // laser hits a rover: both lasers burn out for good
-      p.nolaser = true; tr.rover.nolaser = true;
-      text = `${NAME[p.owner]} rover hits ${tr.rover === p ? 'itself' : tr.rover.owner === p.owner ? 'its own rover' : 'the enemy rover'}: both lasers burn out!`;
-    } else if (v) { pieces.splice(pieces.indexOf(v), 1); text = `${NAME[p.owner]} rover lasers ${v.type === 'astro' ? (v.owner === p.owner ? 'its own astronaut' : 'an astronaut') : (v.owner === p.owner ? 'its own drone' : 'a drone')}!`; }
+    if (v) {                                         // the target is destroyed (a rover too, own pieces included); the shooter stays intact
+      pieces.splice(pieces.indexOf(v), 1);
+      text = `${NAME[p.owner]} rover lasers ${v.owner === p.owner ? 'its own' : 'an enemy'} ${v.type === 'astro' ? 'astronaut' : v.type}!`;
+    }
     else text = `${NAME[p.owner]} rover fires into empty space.`;
-  } else if (m.kind === 'warp') {
-    const [ax, ay] = arrival(p.owner);
-    p.f = 1; p.x = ax; p.y = ay; p.fuel = 0; p.cd = 0;               // arrives on field 2 with an empty tank
-    text = `${NAME[p.owner]} astronaut dives into the wormhole!`;
   } else if (m.kind === 'push') {
     const t = A(m.x, m.y), bx = m.x + m.dx, by = m.y + m.dy;
     p.x = m.x; p.y = m.y;                             // drone takes the pushed piece's square
@@ -206,15 +180,13 @@ function step(p, m) {                              // mutates pieces/turn/winner
       if (t.type === 'core') winner = p.owner;
     }
     p.x = m.x; p.y = m.y;
-    if (m.kind === 'jump') { p.fuel--; p.cd = 1; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
+    if (m.kind === 'jump') { p.fuel--; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
   }
-  // landing cooldown, stun and shield clear after the owner's next turn
+  // stun clears after the owner's next turn
   pieces.forEach(q => {
     if (q.owner !== turn) return;
-    q.st = 0; q.sh = 0;
-    if (q.cd > 0 && !(q === p && m.kind === 'jump')) q.cd = 0;
+    q.st = 0;
   });
-  if (m.kind === 'warp') p.sh = 1;                   // shielded through the enemy's next turn
   if (winner !== null) text = `${NAME[winner]} reached the Core and wins!`;
   else {
     turn = 1 - turn;
@@ -222,8 +194,194 @@ function step(p, m) {                              // mutates pieces/turn/winner
   }
   return text;
 }
+const PRIO = { laser: 0, aim: 2, capture: 0, push: 1, jump: 2, walk: 3, feed: 3, refuel: 4 };
+const AI_MS = 10000;                                // time budget per move
+const AI_NOISE = 6;                                // random leaf-score jitter so games vary
+let aiDeadline = 0, aiNodes = 0, aiSide = 0;
+
+function inState(s, fn) {                          // run engine code (legal/step) on a cloned state
+  const sp = pieces, st = turn, sw = winner;
+  pieces = s.pieces; turn = s.turn; winner = s.winner;
+  try { return fn(); } finally { pieces = sp; turn = st; winner = sw; }
+}
+// Move ordering (the better the order, the more alpha-beta cuts): captures first, most valuable victim first, own pieces
+// last; then moves that caused a cutoff before (killer moves per ply, history table per piece type / from / to square).
+const TYPEI = { astro: 0, rover: 1, drone: 2, core: 3 }, VICTIM = { astro: 100, rover: 85, drone: 40, core: 100000 };
+let hist = new Int32Array(2 * 3 * N * N * N * N), killers = [];
+const hkey = (p, m) => (((p.owner * 3 + TYPEI[p.type]) * N * N) + p.y * N + p.x) * N * N + m.y * N + m.x;
+// Transposition table used for ordering only: remembers the best move found in a position (hash -> move key), so each
+// deeper iteration tries the previous iteration's best line first at every level, not just at the root.
+const TT_BITS = 18, TT_MASK = (1 << TT_BITS) - 1, ttKey = new Int32Array(1 << TT_BITS), ttMove = new Int32Array(1 << TT_BITS);
+const ZR = Int32Array.from({ length: 2 * 4 * N * N }, (_, i) => Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(i + 7, 0x85ebca6b) ^ (i * 40503 << 11));
+function hashState(s) {
+  let h = s.turn ? 0x5bd1e995 : 0;
+  for (const p of s.pieces) {
+    const attr = p.fuel + 4 * p.st + 8 * p.dir;
+    h ^= Math.imul(ZR[((p.owner * 4 + TYPEI[p.type]) * N + p.y) * N + p.x], 2 * attr + 1);
+  }
+  return h | 0;
+}
+function genMoves(s, ply = 0, tt = -1) {
+  return inState(s, () => {
+    const out = [], kl = killers[ply] || [];
+    s.pieces.forEach((p, i) => {
+      if (p.owner !== s.turn) return;
+      for (const m of legal(p)) {
+        let sc = 10 - 2 * PRIO[m.kind];
+        if (m.kind === 'capture' || m.kind === 'laser' || m.kind === 'push') {
+          const t = at(m.x, m.y);
+          if (t) sc += 1000 + (t.owner === p.owner ? -2 * VICTIM[t.type] : VICTIM[t.type] - (m.kind === 'capture' ? VICTIM[p.type] / 10 : 0));
+        }
+        if (m.kind === 'jump' || m.kind === 'walk') sc += 3 * (p.owner === 0 ? p.y - m.y : m.y - p.y);   // forward is usually better
+        const k = hkey(p, m);
+        sc += hist[k] / 8 + (kl[0] === k || kl[1] === k ? 400 : 0) + (k === tt ? 5000 : 0);
+        out.push({ i, m, sc, k });
+      }
+    });
+    return out.sort((a, b) => b.sc - a.sc);
+  });
+}
+function child(s, mv) {
+  const c = { pieces: s.pieces.map(p => ({ ...p })), turn: s.turn, winner: s.winner };
+  inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
+  return c;
+}
+const EV = { astro: 100, fuel: 14, vfuel: 6, adv: 16, near: 5, draw: -600 };   // evaluation weights (draw = score of a draw, negative = contempt)
+function evaluate(s) {                             // positive = good for Blue
+  let v = 0;
+  for (const p of s.pieces) {
+    let x = 0;
+    if (p.type === 'astro') {
+      const adv = p.owner === 0 ? HOME[0] - p.y : p.y;
+      const toCore = Math.abs(p.x - MID) + Math.abs(p.y - HOME[1 - p.owner]);
+      x = EV.astro + EV.fuel * p.fuel + EV.adv * adv - 2 * Math.abs(p.x - MID)
+        + EV.near * Math.max(0, 8 - toCore)              // close to the enemy Core
+        + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0)   // can refuel next turn
+        + (toCore === 1 ? 150 : 0);                      // one step from the Core
+    } else if (p.type === 'rover') x = 85 + (nearStation(p) ? 10 : 0);   // rover guards the station
+    else if (p.type === 'drone') x = 40;
+    if (p.type === 'rover' || p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
+    v += p.owner === 0 ? x : -x;
+  }
+  return v;
+}
+function cutoff(mv, ply, depth) {                  // remember a move that caused a beta cutoff
+  hist[mv.k] += depth * depth;
+  const kl = killers[ply] || (killers[ply] = []);
+  if (kl[0] !== mv.k) { kl[1] = kl[0]; kl[0] = mv.k; }
+}
+function minimax(s, depth, alpha, beta, ply) {
+  if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
+  if (s.winner !== null) return s.winner === DRAW ? EV.draw : s.winner === aiSide ? 100000 - ply : ply - 100000;
+  const leaf = () => (aiSide === 0 ? 1 : -1) * evaluate(s) + (Math.random() - .5) * AI_NOISE;
+  if (depth === 0) return leaf();
+  const h = hashState(s), ti = h & TT_MASK, moves = genMoves(s, ply, ttKey[ti] === h ? ttMove[ti] : -1);
+  if (!moves.length) return EV.draw;               // stalemate = draw
+  let best = s.turn === aiSide ? -Infinity : Infinity, bm = moves[0];
+  for (const mv of moves) {
+    const v = minimax(child(s, mv), depth - 1, alpha, beta, ply + 1);
+    if (s.turn === aiSide) { if (v > best) { best = v; bm = mv; } alpha = Math.max(alpha, best); }
+    else { if (v < best) { best = v; bm = mv; } beta = Math.min(beta, best); }
+    if (alpha >= beta) { cutoff(mv, ply, depth); break; }
+  }
+  ttKey[ti] = h; ttMove[ti] = bm.k;
+  return best;
+}
+const msig = (p, m) => m.kind === 'laser' || m.kind === 'aim' ? `${p.x},${p.y}>${m.kind}${m.dx},${m.dy}` : `${p.x},${p.y}>${m.x},${m.y}:${m.kind}`;   // identifies a move independent of piece indices
+function aiSearch(side = 0, maxPlies = 14, ms = AI_MS) {
+  aiSide = side;
+  const root = { pieces: pieces.map(p => ({ ...p })), turn, winner };
+  hist.fill(0); killers = []; ttKey.fill(0);
+  const moves = genMoves(root), t0 = performance.now();
+  aiDeadline = t0 + ms; aiNodes = 0;
+  let best = moves[0], done = 0;
+  for (let d = 1; d <= maxPlies; d++) {
+    try {
+      let bv = -Infinity, bm = null;
+      for (const mv of moves) {
+        mv.v = minimax(child(root, mv), d - 1, bv, Infinity, 1);
+        if (mv.v > bv) { bv = mv.v; bm = mv; }
+      }
+      best = bm; done = d;
+      moves.sort((a, b) => b.v - a.v);             // best first for the next, deeper pass
+      if (bv > 90000) break;                       // forced win found
+    } catch (e) { if (e !== 'timeout') throw e; break; }
+  }
+  return { mv: best, depth: done, moves: moves.length, nodes: aiNodes, ms: Math.round(performance.now() - t0) };
+}
+function packResult(r) {                           // search result in a form that survives postMessage (no piece indices)
+  const p = r.mv && pieces[r.mv.i];
+  return { depth: r.depth, moves: r.moves, nodes: r.nodes, ms: r.ms, mv: p ? { fx: p.x, fy: p.y, m: r.mv.m, sig: msig(p, r.mv.m) } : null };
+}
+// Pondering: the position has the human to move. For EVERY human reply (except suicidal ones) the AI's best answer is
+// searched, deeper and deeper without any time limit, and each result is posted at once; the page uses the one that
+// matches the human's real move. Likely replies (the ones that are worst for the AI) get the deeper passes first.
+const SUICIDE = 110;                               // a human reply that is this much worse than the best one after a quick look is skipped
+function ponderSearch(maxPlies, post) {
+  aiSide = 1 - turn; hist.fill(0); killers = []; ttKey.fill(0); aiDeadline = Infinity; aiNodes = 0;
+  const root = { pieces: pieces.map(p => ({ ...p })), turn, winner }, all = [];
+  for (const h of genMoves(root)) {
+    const c = child(root, h);
+    if (c.winner !== null) continue;               // the reply ends the game: nothing to answer
+    all.push({ sig: msig(root.pieces[h.i], h.m), c, v: minimax(c, 1, -Infinity, Infinity, 1) });   // v = AI's value after its best answer (low = good for the human)
+  }
+  const best = Math.min(...all.map(r => r.v)), sts = best < -90000 ? all : all.filter(r => r.v - best <= SUICIDE);
+  post({ type: 'pstart', replies: sts.length, pruned: all.length - sts.length });
+  for (let d = 1; d <= maxPlies; d++) {
+    sts.sort((a, b) => a.v - b.v);
+    const n = Math.max(2, Math.ceil(sts.length / 2 ** Math.floor((d - 1) / 2)));   // deeper passes only for the more likely replies
+    let any = false;
+    for (const st of sts.slice(0, n)) {
+      if (st.done) continue;
+      if (!st.moves) { st.moves = genMoves(st.c); if (!st.moves.length) { st.done = true; continue; } }
+      let bv = -Infinity, bm = null;
+      for (const mv of st.moves) {
+        mv.v = minimax(child(st.c, mv), d - 1, bv, Infinity, 1);
+        if (mv.v > bv) { bv = mv.v; bm = mv; }
+      }
+      st.moves.sort((a, b) => b.v - a.v);
+      st.v = bv; any = true; if (bv > 90000) st.done = true;
+      const p = st.c.pieces[bm.i];
+      post({ type: 'pr', sig: st.sig, depth: d, v: bv, moves: st.moves.length, nodes: aiNodes, mv: { fx: p.x, fy: p.y, m: bm.m, sig: msig(p, bm.m) } });
+    }
+    post({ type: 'pdepth', depth: d });
+    if (!any) break;
+  }
+  post({ type: 'pdone' });
+}
+</script>
+
+<script>
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const UNDO_DEPTH = 4;
+let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {}, aim = null;
+const anims = new Map();                        // piece -> running move animation
+let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
+const busy = () => performance.now() < animUntil;
+
+function newGame() {
+  history = []; hint = null; seen = {}; aim = null;
+  anims.clear(); ghosts = []; animUntil = 0; fx.length = 0; aiPending = false; aiGen++; killWorker(); pond = null; ponderHit = null; renderInfo();
+  pieces = []; turn = 0; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
+  [0, 1].forEach(o => {
+    const h = HOME[o], r = h + DIR[o];            // r = row in front of home row
+    add('core', o, MID, h);                       // the Core between four astronauts on the back row; the fifth stands in front of it
+    [0, MID - 1, MID + 1, N - 1].forEach(x => add('astro', o, x, h));
+    add('astro', o, MID, r);
+    add(o === 0 ? 'rover' : 'drone', o, 1, r);    // rover and drone one row up; Red has them swapped
+    add(o === 0 ? 'drone' : 'rover', o, N - 2, r);
+  });
+  seen[posKey()] = 1;
+  say('Blue moves first.');
+  updateUI();
+  maybeAI();
+  startPonder();
+}
+function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? START_FUEL : type === 'core' ? 0 : VEH_FUEL, st: 0, dir: owner === 0 ? 1 : 3 }); }   // dir: rover aim (index into DIRS4): Blue east, Red west at the start
+function say(t) { msg = t; document.getElementById('msg').textContent = t; }
+
 function posKey() {
-  return turn + ':' + pieces.map(q => [q.type[0], q.owner, q.f, q.x, q.y, q.fuel, q.cd, q.st, q.sh, q.dir, q.nolaser ? 1 : 0].join()).sort().join('|');
+  return turn + ':' + pieces.map(q => [q.type[0], q.owner, q.x, q.y, q.fuel, q.st, q.dir].join()).sort().join('|');
 }
 function drawCheck() {                             // stalemate and threefold repetition (real game only, not the search)
   if (winner !== null) return '';
@@ -235,15 +393,10 @@ function drawCheck() {                             // stalemate and threefold re
 // ---------- move animations ----------
 const TURN = 75, SHIFT = 300, FLY0 = 520;           // ms per 45° turn, per one-cell shift, base flight time
 function buildAnim(p, m, from) {                    // timeline of segments for the moving piece; the game state is already updated
-  const to = { f: p.f, x: p.x, y: p.y }, dx = to.x - from.x, dy = to.y - from.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
+  const to = { x: p.x, y: p.y }, dx = to.x - from.x, dy = to.y - from.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
   const segs = []; let tArrive = 0, t = 0;
   const add = sg => { segs.push({ a0: 0, a1: 0, side: 1, ...sg }); t += sg.d; };
-  if (p.type === 'astro' && m.kind === 'warp') {    // walk into the wormhole, shrink away, pop out on field 2
-    const worm = { f: from.f, x: m.x, y: m.y };
-    add({ d: SHIFT, from, to: worm, arc: .1 }); tArrive = t;
-    add({ d: 230, from: worm, to: worm, s0: 1, s1: 0 });
-    add({ d: 260, from: to, to, s0: 0, s1: 1 });
-  } else if (p.type === 'astro') {
+  if (p.type === 'astro') {
     const jump = m.kind === 'jump';
     const A = jump ? 90 : dy !== 0 ? 180 : 90, side = dx < 0 ? -1 : 1;   // a forward step shows the back (for both colours), sideways shows the profile
     if (A) add({ d: A / 45 * TURN, from, to: from, a0: 0, a1: A, side });
@@ -257,6 +410,11 @@ function buildAnim(p, m, from) {                    // timeline of segments for 
   }
   return { segs, tArrive, tEnd: t };
 }
+function pulseAnim(at) {                            // refuelling: grow and shrink three times on the spot
+  const segs = [];
+  for (let i = 0; i < 3; i++) for (const [s0, s1] of [[1, 1.35], [1.35, 1]]) segs.push({ d: 110, from: at, to: at, a0: 0, a1: 0, side: 1, s0, s1 });
+  return { segs, tArrive: 0, tEnd: 660 };
+}
 function visual(p, now) {                           // where and how a piece is drawn right now (null = at rest)
   const an = anims.get(p);
   if (!an) return null;
@@ -264,7 +422,7 @@ function visual(p, now) {                           // where and how a piece is 
   for (const sg of an.segs) {
     if (t <= sg.d) {
       const u = sg.d ? Math.max(0, t) / sg.d : 1, e = u * u * (3 - 2 * u), s0 = sg.s0 ?? 1, s1 = sg.s1 ?? 1;
-      return { f: sg.from.f, x: sg.from.x + (sg.to.x - sg.from.x) * e, y: sg.from.y + (sg.to.y - sg.from.y) * e,
+      return { x: sg.from.x + (sg.to.x - sg.from.x) * e, y: sg.from.y + (sg.to.y - sg.from.y) * e,
                ang: sg.a0 + (sg.a1 - sg.a0) * u, side: sg.side, lift: (sg.arc || 0) * Math.sin(Math.PI * u),
                flame: !!sg.flame, scale: s0 + (s1 - s0) * e, alpha: 1 };
     }
@@ -276,24 +434,24 @@ function visual(p, now) {                           // where and how a piece is 
 function animate(p, m, before, pos) {
   const now = performance.now();
   let tArr = 0, until = 0;
-  const a = (m.kind === 'refuel' || m.kind === 'laser' || m.kind === 'aim') ? null : buildAnim(p, m, pos.get(p));
+  const a = (m.kind === 'laser' || m.kind === 'aim') ? null : (m.kind === 'refuel' || m.kind === 'feed') ? pulseAnim(pos.get(p)) : buildAnim(p, m, pos.get(p));
   if (a) { anims.set(p, { t0: now, segs: a.segs }); tArr = a.tArrive; until = a.tEnd; }
   for (const q of before) {
     if (q === p) continue;
     const o = pos.get(q);
     if (pieces.includes(q)) {
-      if (q.f !== o.f || q.x !== o.x || q.y !== o.y) {          // pushed one square once the drone has arrived
-        anims.set(q, { t0: now, segs: [{ d: tArr, from: o, to: o, a0: 0, a1: 0, side: 1 }, { d: 170, from: o, to: { f: q.f, x: q.x, y: q.y }, a0: 0, a1: 0, side: 1 }] });
+      if (q.x !== o.x || q.y !== o.y) {          // pushed one square once the drone has arrived
+        anims.set(q, { t0: now, segs: [{ d: tArr, from: o, to: o, a0: 0, a1: 0, side: 1 }, { d: 170, from: o, to: { x: q.x, y: q.y }, a0: 0, a1: 0, side: 1 }] });
         until = Math.max(until, tArr + 170);
       }
     } else if (m.kind === 'laser') {                            // the beam hits at once
-      fx.push({ f: o.f, x: o.x, y: o.y, t0: now }); until = Math.max(until, FX_MS);
+      fx.push({ x: o.x, y: o.y, t0: now }); until = Math.max(until, FX_MS);
     } else if (m.kind === 'push' && !inB(m.x + m.dx, m.y + m.dy)) {   // shoved off the board
       ghosts.push({ p: q, o, until: now + tArr + 280, slide: { dx: m.dx, dy: m.dy, t0: now + tArr, d: 280 } });
       until = Math.max(until, tArr + 280);
     } else {                                                    // captured: stays until the attacker arrives, then explodes
       ghosts.push({ p: q, o, until: now + tArr });
-      fx.push({ f: o.f, x: o.x, y: o.y, t0: now + tArr }); until = Math.max(until, tArr + FX_MS);
+      fx.push({ x: o.x, y: o.y, t0: now + tArr }); until = Math.max(until, tArr + FX_MS);
     }
   }
   animUntil = now + until + 40;
@@ -301,16 +459,17 @@ function animate(p, m, before, pos) {
 }
 
 function apply(p, m, who) {
-  if (turn === 0) history.push({ pieces: pieces.map(q => ({ ...q })), turn, winner, lastMove, msg, seen: { ...seen } });   // undo point before each Blue move
+  if (pond) { ponderHit = pond.table.get(msig(p, m)) || null; killWorker(); pond = null; }   // a human move: keep the prepared answer, stop pondering
+  history.push({ pieces: pieces.map(q => ({ ...q })), turn, winner, lastMove, msg, seen: { ...seen } });   // undo point before every move, last 4 kept
+  if (history.length > UNDO_DEPTH) history.shift();
   hint = null;
-  lastMove = [{ f: p.f, x: p.x, y: p.y }, { f: p.f, x: m.x, y: m.y }];
+  lastMove = [{ x: p.x, y: p.y }, { x: m.x, y: m.y }];
   if (m.kind === 'laser') {
     const tr = beamTrace(p, m.dx, m.dy);
-    fx.push({ type: 'beam', f: p.f, dx: m.dx, dy: m.dy, x0: p.x + .5, y0: p.y + .5, x1: tr.ex, y1: tr.ey, owner: p.owner, t0: performance.now() });
+    fx.push({ type: 'beam', dx: m.dx, dy: m.dy, x0: p.x + .5, y0: p.y + .5, x1: tr.ex, y1: tr.ey, owner: p.owner, t0: performance.now() });
   }
-  const before = pieces.slice(), pos = new Map(before.map(q => [q, { f: q.f, x: q.x, y: q.y }]));
+  const before = pieces.slice(), pos = new Map(before.map(q => [q, { x: q.x, y: q.y }]));
   const text = step(p, m);
-  if (m.kind === 'warp') lastMove.push({ f: p.f, x: p.x, y: p.y });   // where it landed on field 2
   animate(p, m, before, pos);
   say((who ? who + ': ' : '') + text + drawCheck());
   updateUI();
@@ -324,21 +483,19 @@ function updateUI() {
 }
 
 // ---------- input ----------
-function cellOf(e) {                                // which field and square is under the pointer
+function cellOf(e) {                                // which square is under the pointer
   const r = cv.getBoundingClientRect();
   const px = (e.clientX - r.left) * cv.width / r.width, py = (e.clientY - r.top) * cv.height / r.height;
-  const f = px < N * CELL ? 0 : px >= OFFX(1) ? 1 : -1;
-  return { px, py, f, x: f < 0 ? -1 : Math.floor((px - OFFX(f)) / CELL), y: Math.floor((py - HDR) / CELL) };
+  return { px, py, x: Math.floor(px / CELL), y: Math.floor(py / CELL) };
 }
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
   if (winner !== null || thinking || aiTurn() || busy()) return;
-  const c = cellOf(e), p = c.f >= 0 && inB(c.x, c.y) && at(c.x, c.y, c.f);
+  const c = cellOf(e), p = inB(c.x, c.y) && at(c.x, c.y);
   if (!p || p.owner !== turn || fixed(p)) return;
   if (e.button === 2) {                              // right mouse: aim / fire the rover laser
     if (p.type !== 'rover') { say('Only rovers have a laser.'); return; }
     if (p.st > 0) { say('That rover is stunned this turn.'); return; }
-    if (p.nolaser) { say("That rover's laser is burnt out."); return; }
     aim = { p, x0: c.px, y0: c.py, px: c.px, py: c.py, dir: p.dir };
     cv.setPointerCapture(e.pointerId); kick(); return;
   }
@@ -350,7 +507,7 @@ cv.addEventListener('pointerdown', e => {
   kick();
 });
 cv.addEventListener('pointermove', e => {
-  const c = cellOf(e); hover = { f: c.f, x: c.x, y: c.y };
+  const c = cellOf(e); hover = { x: c.x, y: c.y };
   if (drag) { drag.px = c.px; drag.py = c.py; }
   if (aim) {
     aim.px = c.px; aim.py = c.py;
@@ -371,34 +528,40 @@ cv.addEventListener('pointerup', e => {
   if (!drag) return;
   const c = cellOf(e), { p, moves } = drag;
   drag = null; cv.classList.remove('dragging');
-  const m = c.f === p.f && moves.find(m => m.x === c.x && m.y === c.y);
+  const m = moves.find(m => m.x === c.x && m.y === c.y);
   if (m) apply(p, m);
-  else if (c.f !== p.f || c.x !== p.x || c.y !== p.y) say('Illegal landing. Piece returned.');
+  else if (c.x !== p.x || c.y !== p.y) say('Illegal landing. Piece returned.');
   draw();
 });
 cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
 document.getElementById('reset').onclick = () => { newGame(); draw(); };
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
   if (thinking || winner !== null || aiTurn() || busy()) return;
+  killPonder();
   thinking = true; updateUI();
-  setTimeout(() => {
-    const r = aiSearch(turn);
+  const gen = aiGen;
+  search(turn).then(r => {
+    if (gen !== aiGen) return;
     thinking = false; updateUI();
-    if (!r.mv) { say('No legal moves.'); return; }
-    const p = pieces[r.mv.i], m = r.mv.m;
-    hint = { f: p.f, from: [p.x, p.y], to: [m.x, m.y] };
+    const p = r.mv && at(r.mv.fx, r.mv.fy);
+    if (!p) { say('No legal moves.'); return; }
+    showAiInfo(turn, r);
+    const m = r.mv.m;
+    hint = { from: [p.x, p.y], to: [m.x, m.y] };
     const what = { astro: 'astronaut', rover: 'rover', drone: 'drone' }[p.type];
     say(`Suggestion: ${what} ${m.kind} (${r.depth} plies deep). Shown in yellow.`);
     draw();
-  }, 50);
+    startPonder();
+  });
 };
-document.getElementById('undo').onclick = () => {   // back to the position before Blue's last move (drops Red's reply too)
+document.getElementById('undo').onclick = () => {   // back to the position before the last move, either colour (up to UNDO_DEPTH moves)
   if (thinking || busy() || !history.length) { say('Nothing to undo.'); return; }
+  killPonder(); ponderHit = null;
   const h = history.pop();
   anims.clear(); ghosts = []; fx.length = 0;
   pieces = h.pieces; turn = h.turn; winner = h.winner; lastMove = h.lastMove; drag = null; hint = null; seen = h.seen;
   roleSel.value = 'two';                             // otherwise the AI would instantly replay Blue's move
-  say('Blue move undone. Players set to "Two humans", so you move Blue now; pick a role again to bring the AI back.');
+  say(`${NAME[turn]} to move again (move undone, ${history.length} more can be undone). Players set to "Two humans" so the AI does not replay; pick a role again to bring it back.`);
   updateUI(); draw();
 };
 
@@ -451,34 +614,93 @@ function drawRover(cx, by, s, col) {                 // moon rover, drawn in the
 function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
 
 // ---------- static layers ----------
-let boardLayers = [null, null], boardLayerArt = false;
-function makeBoardLayer(f) {
-  const c = document.createElement('canvas'); c.width = c.height = 700; const k = c.getContext('2d'), rnd = seeded(7 + 5 * f);
-  const sky = k.createRadialGradient(350, 350, 40, 350, 350, 520);   // deep space, a touch lighter in the middle
-  sky.addColorStop(0, f ? '#43308f' : '#26357f'); sky.addColorStop(1, f ? '#1a0d48' : '#0d1544');   // field 2 is more violet
-  k.fillStyle = sky; k.fillRect(0, 0, 700, 700);
+let boardLayer = null, boardLayerArt = false;
+// ---------- planet-surface tiles: paper-cut shapes with soft shadows, pencil outlines and hatching ----------
+// Five variants are drawn once with a seeded random generator and handed out randomly to the squares.
+let surfaceTiles = null;
+function makeTiles() {
+  const T = CELL, out = [];
+  const poly = (k, rnd, cx, cy, r, n, jit) => Array.from({ length: n }, (_, i) => {   // jagged outline, like scissor cuts
+    const a = i / n * 6.2832 + rnd() * .5, rr = r * (1 - jit + rnd() * jit * 2);
+    return [cx + Math.cos(a) * rr * 1.1, cy + Math.sin(a) * rr * .85];
+  });
+  const path = (k, pts) => { k.beginPath(); pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.moveTo(x, y)); k.closePath(); };
+  const hatch = (k, pts, gap, ang, col) => {            // pencil hatching clipped to a shape
+    k.save(); path(k, pts); k.clip(); k.strokeStyle = col; k.lineWidth = 1.1;
+    for (let i = -T; i < 2 * T; i += gap) { k.beginPath(); k.moveTo(i, T + 4); k.lineTo(i + T * ang, -4); k.stroke(); }
+    k.restore();
+  };
+  const cut = (k, pts, fill, hatchGap) => {             // a cut-out paper piece: shadow, fill, light edge, pencil line
+    k.save(); k.translate(2.5, 3.5); path(k, pts); k.fillStyle = '#04150c' + '66'; k.fill(); k.restore();
+    path(k, pts); k.fillStyle = fill; k.fill();
+    if (hatchGap) hatch(k, pts, hatchGap, .55, '#06281a44');
+    k.lineJoin = 'round'; path(k, pts); k.strokeStyle = '#ffffff80'; k.lineWidth = 3; k.stroke();
+    path(k, pts); k.strokeStyle = '#06281acc'; k.lineWidth = 1.3; k.stroke();
+  };
+  const crater = (k, rnd, cx, cy, r) => {               // raised rim, sunken pit, shaded inside
+    cut(k, poly(k, rnd, cx, cy, r, 9, .14), '#8fc6a6c8', 0);
+    const pit = poly(k, rnd, cx + r * .1, cy + r * .12, r * .62, 8, .12);
+    path(k, pit); k.fillStyle = '#0c3322c0'; k.fill();
+    hatch(k, pit, 4, .55, '#04150c77');
+    path(k, pit); k.strokeStyle = '#04150cdd'; k.lineWidth = 1.4; k.stroke();
+  };
+  const grain = (k, rnd, n) => { for (let i = 0; i < n; i++) { k.fillStyle = rnd() < .5 ? '#ffffff30' : '#06281a40'; k.fillRect(rnd() * T, rnd() * T, 1.6, 1.6); } };
+  const stone = (k, rnd, cx, cy, r) => cut(k, poly(k, rnd, cx, cy, r, 6, .25), '#86bd9ed4', 0);
+  const crack = (k, rnd, x, y, a, len, depth) => {      // branching pencil crack
+    k.strokeStyle = '#04150cc0'; k.lineWidth = 1.4; k.lineCap = 'round'; k.beginPath(); k.moveTo(x, y);
+    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len; k.lineTo((x + x1) / 2 + (rnd() - .5) * 8, (y + y1) / 2 + (rnd() - .5) * 8); k.lineTo(x1, y1); k.stroke();
+    if (depth > 0) { crack(k, rnd, x1, y1, a + .6 + rnd() * .4, len * .6, depth - 1); crack(k, rnd, x1, y1, a - .6 - rnd() * .4, len * .55, depth - 1); }
+  };
+  for (let i = 0; i < 5; i++) {
+    const c = document.createElement('canvas'); c.width = c.height = T; const k = c.getContext('2d'), rnd = seeded(101 + 37 * i);
+    if (i === 0) { crater(k, rnd, 40, 56, 26); crater(k, rnd, 76, 28, 11); }                         // one big and one small crater
+    if (i === 1) {                                                                                     // two layered rock slabs
+      cut(k, [[8, 80], [20, 52], [46, 46], [70, 56], [92, 78], [60, 90]], '#5f9f7fd8', 5);
+      cut(k, [[34, 82], [44, 62], [66, 60], [84, 80], [60, 88]], '#93caabdc', 0);
+    }
+    if (i === 2) {                                                                                     // dusty plain: hatched drifts and specks
+      for (let j = 0; j < 3; j++) { const y = 22 + j * 26 + rnd() * 6, pts = [[8, y + 8], [30, y - 4], [60, y - 6], [92, y + 6], [60, y + 10]]; hatch(k, pts, 4, .35, '#06281a66'); path(k, pts); k.strokeStyle = '#06281a99'; k.lineWidth = 1.1; k.stroke(); }
+      for (let j = 0; j < 9; j++) { k.fillStyle = '#06281a88'; k.beginPath(); k.arc(8 + rnd() * 84, 8 + rnd() * 84, 1 + rnd() * 1.4, 0, 7); k.fill(); }
+    }
+    if (i === 3) { for (let j = 0; j < 6; j++) stone(k, rnd, 14 + rnd() * 72, 14 + rnd() * 72, 5 + rnd() * 6); crater(k, rnd, 66, 68, 14); }   // scattered stones and a pit
+    if (i === 4) { crack(k, rnd, 14, 30, .5, 34, 2); crack(k, rnd, 86, 84, 3.6, 28, 2); cut(k, poly(k, rnd, 66, 30, 14, 7, .2), '#86bd9ed4', 6); }   // cracked ground
+    grain(k, rnd, 260);
+    out.push(c);
+  }
+  return out;
+}
+function makeBoardLayer() {
+  const S = N * CELL, c = document.createElement('canvas'); c.width = c.height = S; const k = c.getContext('2d'), rnd = seeded(7);
+  const sky = k.createRadialGradient(S / 2, S / 2, 50, S / 2, S / 2, S * .75);   // deep space, a touch lighter in the middle
+  sky.addColorStop(0, '#1d5a3b'); sky.addColorStop(1, '#071f13');
+  k.fillStyle = sky; k.fillRect(0, 0, S, S);
   k.strokeStyle = '#ffffff10'; k.lineWidth = 2;                       // crayon scribble over the sky
-  for (let i = 0; i < 90; i++) { const x = rnd() * 760 - 30, y = rnd() * 700; k.beginPath(); k.moveTo(x, y + 60); k.lineTo(x + 70, y); k.stroke(); }
+  for (let i = 0; i < 150; i++) { const x = rnd() * (S + 60) - 30, y = rnd() * S; k.beginPath(); k.moveTo(x, y + 60); k.lineTo(x + 70, y); k.stroke(); }
   if (ART.bg.complete && ART.bg.naturalWidth) {                       // planets, stars and rocks floating behind the cells
     boardLayerArt = true;
-    for (let i = 0; i < 17; i++) {
+    for (let i = 0; i < 28; i++) {
       const r = R.deco[Math.floor(rnd() * R.deco.length)], big = r[2] > 100 || r[3] > 100;
-      const hh = (big ? 90 : 34) + rnd() * (big ? 90 : 36), ww = r[2] * hh / r[3], x = 40 + rnd() * 620, y = 40 + rnd() * 620;
-      if (Math.hypot(x - 350, y - 350) < 120) continue;               // keep the sun's neighbourhood clear
+      const hh = (big ? 90 : 34) + rnd() * (big ? 90 : 36), ww = r[2] * hh / r[3], x = 40 + rnd() * (S - 80), y = 40 + rnd() * (S - 80);
+      if (Math.hypot(x - S / 2, y - S / 2) < 120) continue;               // keep the sun's neighbourhood clear
       k.save(); k.translate(x, y); k.rotate((rnd() - .5) * .9); k.globalAlpha = .75;
       k.drawImage(ART.bg, r[0], r[1], r[2], r[3], -ww / 2, -hh / 2, ww, hh); k.restore();
     }
   }
+  if (!surfaceTiles) surfaceTiles = makeTiles();
+  const pick = seeded(2024), grid = [];                                // random tile per square, never the same as the left or upper neighbour
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {           // translucent cells: visible, but the scene shows through
+    let t; do t = Math.floor(pick() * 5); while (t === (x ? grid[y * N + x - 1] : -1) || t === (y ? grid[(y - 1) * N + x] : -1));
+    grid[y * N + x] = t;
     const near = Math.max(Math.abs(x - STATION.x), Math.abs(y - STATION.y)) === 1;
-    k.fillStyle = (x + y) % 2 ? '#9db6ea99' : '#e4ecfb99';
+    k.fillStyle = (x + y) % 2 ? '#1f5c3ecc' : '#2c7451cc';
     k.fillRect(x * CELL, y * CELL, CELL, CELL);
+    k.drawImage(surfaceTiles[t], x * CELL, y * CELL);
     if (y === HOME[0]) { k.fillStyle = '#3aa0ff88'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }
     if (y === HOME[1]) { k.fillStyle = '#ff5a6e88'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }
     if (near) { k.fillStyle = '#ffe14d66'; k.fillRect(x * CELL, y * CELL, CELL, CELL); }   // refuel zone
   }
-  k.strokeStyle = '#1a2766aa'; k.lineWidth = 2;
-  for (let i = 1; i < N; i++) { k.beginPath(); k.moveTo(i * CELL, 0); k.lineTo(i * CELL, 700); k.moveTo(0, i * CELL); k.lineTo(700, i * CELL); k.stroke(); }
+  k.strokeStyle = '#04150caa'; k.lineWidth = 2;
+  for (let i = 1; i < N; i++) { k.beginPath(); k.moveTo(i * CELL, 0); k.lineTo(i * CELL, S); k.moveTo(0, i * CELL); k.lineTo(S, i * CELL); k.stroke(); }
   return c;
 }
 const bgc = document.getElementById('bgc');
@@ -508,38 +730,32 @@ function loop() {
 function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
 
 // ---------- drawing ----------
-const HEADINGS = ['FIELD 1 · reach the wormhole', 'FIELD 2 · reach the Core'];
 function draw() {
   const now = performance.now();
   g.clearRect(0, 0, W, H);
   const vis = new Map();                            // animated pieces
   for (const p of pieces) { const v = visual(p, now); if (v) vis.set(p, v); }
   ghosts = ghosts.filter(gh => now <= gh.until + 60);
-  if (!boardLayers[0] || (!boardLayerArt && ART.bg.complete && ART.bg.naturalWidth)) boardLayers = [makeBoardLayer(0), makeBoardLayer(1)];
+  if (!boardLayer || (!boardLayerArt && ART.bg.complete && ART.bg.naturalWidth)) boardLayer = makeBoardLayer();
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-  for (const f of [0, 1]) {
-    g.font = 'bold 20px "Comic Sans MS","Chalkboard SE",cursive';
-    g.lineWidth = 5; g.strokeStyle = '#111'; g.strokeText(HEADINGS[f], OFFX(f) + 350, HDR / 2);
-    g.fillStyle = '#fff'; g.fillText(HEADINGS[f], OFFX(f) + 350, HDR / 2);
-    drawField(f, now, vis);
-  }
+  drawField(now, vis);
   if (drag) { g.globalAlpha = .5; drawPiece(drag.p, drag.px, drag.py, 1, false, now); g.globalAlpha = 1; }   // transparent copy follows the mouse
   if (winner !== null) {
     const label = winner === DRAW ? 'Draw!' : `${NAME[winner]} wins!`;
     g.fillStyle = '#f6efdc'; g.strokeStyle = '#111'; g.lineWidth = 6;
-    g.beginPath(); g.roundRect(W / 2 - 290, 275, 580, 190, 26); g.fill(); g.stroke();
+    g.beginPath(); g.roundRect(W / 2 - 290, H / 2 - 95, 580, 190, 26); g.fill(); g.stroke();
     g.font = 'bold 62px "Comic Sans MS","Chalkboard SE",cursive'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineJoin = 'round'; g.strokeStyle = '#111'; g.lineWidth = 9; g.strokeText(label, W / 2, 370);
-    g.fillStyle = COLOR[winner]; g.fillText(label, W / 2, 370);
+    g.lineJoin = 'round'; g.strokeStyle = '#111'; g.lineWidth = 9; g.strokeText(label, W / 2, H / 2);
+    g.fillStyle = COLOR[winner]; g.fillText(label, W / 2, H / 2);
   }
 }
 
-function drawField(f, now, vis) {
-  g.save(); g.translate(OFFX(f), HDR);
-  g.drawImage(boardLayers[f], 0, 0);
+function drawField(now, vis) {
+  g.save();
+  g.drawImage(boardLayer, 0, 0);
   sprite(ART.bg, R.sun, STATION.x * CELL + 50, STATION.y * CELL + 96, 92);   // the sun is the fuel station
 
-  if (hint && hint.f === f) {                        // suggested move: arrow + target outline
+  if (hint) {                        // suggested move: arrow + target outline
     const [x0, y0] = hint.from.map(v => v * CELL + 50), [x1, y1] = hint.to.map(v => v * CELL + 50);
     for (const [col, lw] of [['#111', 11], ['#ffd24d', 5]]) {
       g.strokeStyle = g.fillStyle = col; g.lineWidth = lw; g.lineJoin = 'round';
@@ -558,11 +774,11 @@ function drawField(f, now, vis) {
     g.setLineDash([8, 6]);
     for (const [col, lw] of [['#111', 5.5], ['#fff', 2.5]]) {
       g.strokeStyle = col; g.lineWidth = lw;
-      for (const e of lastMove) if (e.f === f) g.strokeRect(e.x * CELL + 4, e.y * CELL + 4, CELL - 8, CELL - 8);
+      for (const e of lastMove) g.strokeRect(e.x * CELL + 4, e.y * CELL + 4, CELL - 8, CELL - 8);
     }
     g.setLineDash([]);
   }
-  if (drag && drag.p.f === f) for (const m of drag.moves) {   // legal-move hints
+  if (drag) for (const m of drag.moves) {   // legal-move hints
     const x = m.x * CELL, y = m.y * CELL;
     g.fillStyle = KCOL[m.kind] + '77'; g.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
     g.setLineDash([9, 5]);
@@ -574,13 +790,13 @@ function drawField(f, now, vis) {
       g.setLineDash([6, 6]); g.strokeStyle = '#111'; g.lineWidth = 6; g.stroke(); g.strokeStyle = '#9fe3ff'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
     }
   }
-  if (drag && hover && hover.f === f && drag.p.f === f && inB(hover.x, hover.y)) {
+  if (drag && hover && inB(hover.x, hover.y)) {
     g.strokeStyle = '#111'; g.lineWidth = 7; g.strokeRect(hover.x * CELL + 2, hover.y * CELL + 2, CELL - 4, CELL - 4);
     g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(hover.x * CELL + 2, hover.y * CELL + 2, CELL - 4, CELL - 4);
   }
 
   for (const p of pieces) {                          // faint, wobbling glow along each rover's aim
-    if (p.f !== f || p.type !== 'rover' || p.nolaser) continue;
+    if (p.type !== 'rover') continue;
     const [dx, dy] = DIRS4[aim && aim.p === p ? aim.dir : p.dir], tr = beamTrace(p, dx, dy), armed = aim && aim.p === p;
     const [x0, y0, x1, y1] = beamPoints(p.x * CELL + 50, p.y * CELL + 50, tr.ex * CELL, tr.ey * CELL, dx, dy);
     g.lineCap = 'round'; g.lineJoin = 'round';
@@ -591,12 +807,12 @@ function drawField(f, now, vis) {
   }
   for (const pass of [0, 1]) for (const p of pieces) {   // pass 1 = animated pieces, drawn on top
     const v = vis.get(p);
-    if (!!v !== !!pass || (v ? v.f : p.f) !== f) continue;
+    if (!!v !== !!pass) continue;
     const px = (v ? v.x : p.x) * CELL + 50, py = (v ? v.y : p.y) * CELL + 50;
     drawPiece(p, px, py, 1, false, now, v);          // the real piece stays where it is while a copy is dragged
   }
   for (const gh of ghosts) {                         // captured pieces stay visible until the attacker arrives
-    if (gh.o.f !== f || now > gh.until) continue;
+    if (now > gh.until) continue;
     let v = null;
     if (gh.slide && now > gh.slide.t0) {             // shoved off the board: slide out, shrink, fade
       const u = (now - gh.slide.t0) / gh.slide.d;
@@ -605,7 +821,7 @@ function drawField(f, now, vis) {
     drawPiece(gh.p, (v ? v.x : gh.o.x) * CELL + 50, (v ? v.y : gh.o.y) * CELL + 50, 1, false, now, v);
   }
   for (const e of fx) {                              // laser shots: flickering red/blue beam
-    if (e.type !== 'beam' || e.f !== f) continue;
+    if (e.type !== 'beam') continue;
     const life = 1 - (now - e.t0) / FX_MS, flick = Math.floor(now / 40) % 2, jit = () => (Math.random() - .5) * 5;
     const [bx0, by0, bx1, by1] = beamPoints(e.x0 * CELL, e.y0 * CELL, e.x1 * CELL, e.y1 * CELL, e.dx, e.dy);
     g.lineCap = 'round'; g.globalAlpha = Math.max(0, Math.min(1, life * 1.4));
@@ -616,7 +832,7 @@ function drawField(f, now, vis) {
     g.globalAlpha = 1;
   }
   for (const e of fx) {                              // capture explosions
-    if (e.type === 'beam' || e.f !== f || now < e.t0) continue;
+    if (e.type === 'beam' || now < e.t0) continue;
     const k = Math.min(5, Math.floor((now - e.t0) / FX_MS * 6));
     sprite(ART.expl, R.boom[k], e.x * CELL + 50, e.y * CELL + 95, 100);
   }
@@ -637,44 +853,24 @@ function wobblePath(ax, ay, bx, by, dx, dy, now, amp) {   // a line that wobbles
   }
 }
 
-// the wormhole: concentric crayon rings with a slowly turning spiral
-function drawWorm(cx, cy, s, now) {
-  g.save(); g.translate(cx, cy); g.scale(s, s);
-  for (const [r, c] of [[40, '#7a3fd0'], [31, '#5b2ab0'], [22, '#3a1a85'], [12, '#150a40']]) crayon(() => g.arc(0, 0, r, 0, 7), c, 3);
-  g.strokeStyle = '#e0c8ff'; g.lineWidth = 3; g.lineCap = 'round';
-  for (let a = 0; a < 3; a++) {
-    g.beginPath();
-    for (let t = 0; t <= 1.001; t += .05) {
-      const ang = now / 900 + a * 2.094 + t * 4, rad = 6 + t * 30;
-      if (t) g.lineTo(Math.cos(ang) * rad, Math.sin(ang) * rad); else g.moveTo(Math.cos(ang) * rad, Math.sin(ang) * rad);
-    }
-    g.stroke();
-  }
-  g.restore();
-}
-
 // astronaut sheet frames, right-facing (mirrored for left): front, 45°, profile, 135°, back
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
 function drawPiece(p, cx, cy, s, lifted, now, vis) {
   const o = p.owner, by = cy + 36 * s;               // by = feet line
-  const L = vis ? vis.lift : 0, sc = vis ? vis.scale : 1;   // L = height of a flight, sc = size (wormhole shrink)
+  const L = vis ? vis.lift : 0, sc = vis ? vis.scale : 1;   // L = height of a flight, sc = size
   g.save();
   if (vis && vis.alpha < 1) g.globalAlpha *= vis.alpha;
   // team-coloured crayon base + soft shadow stay on the ground, so every piece is readable on any square
   const bs = (1 - .25 * L) * sc;
   g.fillStyle = L ? '#0002' : '#0003'; g.beginPath(); g.ellipse(cx + 3 * s, by + 4 * s, 34 * s * bs, 10 * s * bs, 0, 0, 7); g.fill();
   crayon(() => g.ellipse(cx, by, 34 * s * bs, 10 * s * bs, 0, 0, 7), COLOR[o], 3);
-  if (p.type === 'astro' && p.cd > 0) {              // landed: can't jump next turn
-    g.setLineDash([5, 5]); g.lineWidth = 2.5;
-    g.beginPath(); g.ellipse(cx, by, 41 * s * bs, 14 * s * bs, 0, 0, 7); g.strokeStyle = '#111'; g.stroke(); g.setLineDash([]);
-  }
   g.save();                                          // body: lifted and scaled up during a flight (3D)
   const k = (1 + .45 * L) * sc;
   g.translate(0, -L * 42 * s); g.translate(cx, by); g.scale(k, k); g.translate(-cx, -by);
   if (p.st > 0) g.filter = 'grayscale(.7) brightness(.85)';   // stunned: washed out
   if (p.type === 'astro') {
     const side = vis ? vis.side : 1, idx = vis ? Math.round(vis.ang / 45) : 0;
-    if (lifted && p.fuel > 0 && p.cd === 0) drawFlame(cx - 14 * s, by + 2 * s, 24 * s, now);   // jetpack flame while held in the air
+    if (lifted && p.fuel > 0) drawFlame(cx - 14 * s, by + 2 * s, 24 * s, now);   // jetpack flame while held in the air
     if (vis && vis.flame) drawFlame(cx - 26 * s * side, by + 16 * s, 30 * s, now);            // jet flare under the pack
     g.save();
     if (side < 0 && idx > 0 && idx < 4 && !lifted) { g.translate(cx, 0); g.scale(-1, 1); g.translate(-cx, 0); }
@@ -685,18 +881,11 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   } else if (p.type === 'rover') {
     drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
     const [ex, ey] = DIRS4[aim && aim.p === p ? aim.dir : p.dir];   // laser emitter nub
-    crayon(() => g.arc(cx + ex * 36 * s, cy + 2 * s + ey * 30 * s, 8 * s, 0, 7), p.nolaser ? '#777' : '#ff3b3b', 2.5);   // burnt-out emitter is grey
-  } else if (p.type === 'worm') {
-    drawWorm(cx, cy + 4 * s, s * .9, now);
+    crayon(() => g.arc(cx + ex * 36 * s, cy + 2 * s + ey * 30 * s, 8 * s, 0, 7), '#ff3b3b', 2.5);
   } else {                                           // core: a planet
     sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s, 80 * s);
   }
   g.filter = 'none';
-  if (p.sh > 0) {                                    // shield bubble after beaming in
-    const gr = g.createRadialGradient(cx - 14 * s, cy - 22 * s, 4, cx, cy, 52 * s);
-    gr.addColorStop(0, '#ffffffaa'); gr.addColorStop(.35, '#9fe8ff44'); gr.addColorStop(1, '#5cc8ff66');
-    g.beginPath(); g.arc(cx, cy, 50 * s, 0, 7); g.fillStyle = gr; g.fill(); g.lineWidth = 3; g.strokeStyle = '#4fc3f7'; g.stroke();
-  }
   if (p.st > 0) {                                    // zzz in crayon lettering
     g.textAlign = 'left'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 5; g.strokeStyle = '#111'; g.fillStyle = '#fff';
     for (const [t, dx, dy, kk] of [['z', .35, -.2, .8], ['z', .6, -.62, 1], ['Z', .85, -1.1, 1.25]]) {
@@ -704,10 +893,11 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
       g.strokeText(t, cx + 38 * dx * s, cy + 38 * dy * s); g.fillText(t, cx + 38 * dx * s, cy + 38 * dy * s);
     }
   }
-  if (p.type === 'astro') {                          // fuel = little flames next to the feet
-    for (let i = 0; i < MAXFUEL; i++) {
+  if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
+    const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
+    for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
-      sprite(ART.fire, R.flame[0], cx + (i ? 33 : -33) * s, by + 10 * s, 24 * s);
+      sprite(ART.fire, R.flame[0], cx + (slots === 1 ? 36 : [-33, 33, 0][i]) * s, by + (i < 2 ? 10 : 14) * s, 24 * s);
       g.filter = 'none';
     }
   }
@@ -717,124 +907,89 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
 
 // ---------- AI (plays Blue): iterative-deepening minimax with alpha-beta ----------
 const roleSel = document.getElementById('role'), aiDepth = document.getElementById('depth');
-const PRIO = { laser: 0, aim: 2, warp: 0, capture: 0, push: 1, jump: 2, walk: 3, refuel: 4 };
-const AI_MS = 2500;                                // time budget per move
-const AI_NOISE = 6;                                // random leaf-score jitter so games vary
-let aiDeadline = 0, aiNodes = 0, aiSide = 0;
 
 const aiPlays = side => roleSel.value === 'none' || (roleSel.value === 'red' && side === 0) || (roleSel.value === 'blue' && side === 1);
 const aiTurn = () => winner === null && aiPlays(turn);   // 'No human': the AI moves for both sides
-roleSel.onchange = maybeAI;
+roleSel.onchange = () => { killPonder(); maybeAI(); startPonder(); };
+
+// The searches run in a Web Worker built from the engine script, so the board stays responsive. While the human is
+// thinking, the worker ponders: it prepares the AI's answer to every non-suicidal human reply (see ponderSearch).
+const WORKER_GLUE = `
+onmessage = e => { const d = e.data; pieces = d.pieces; turn = d.turn; winner = d.winner;
+  if (d.task === 'ponder') ponderSearch(d.maxPlies, m => postMessage(m));
+  else postMessage({ id: d.id, ...packResult(aiSearch(d.side, d.maxPlies, d.ms)) }); };`;
+let worker = null, jobs = new Map(), jobId = 0, pond = null, ponderHit = null, lastAiDepth = 0;   // pond: { table, replies, pruned, depth, done }
+function startWorker() {
+  if (worker) return worker;
+  const src = 'let pieces, turn, winner;\n' + document.getElementById('engine').textContent + WORKER_GLUE;
+  worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  worker.onmessage = e => {
+    const d = e.data;
+    if (d.type) {
+      if (!pond) return;
+      if (d.type === 'pstart') { pond.replies = d.replies; pond.pruned = d.pruned; }
+      else if (d.type === 'pr') pond.table.set(d.sig, d);
+      else if (d.type === 'pdepth') pond.depth = d.depth;
+      else if (d.type === 'pdone') pond.done = true;
+      renderInfo();
+    } else if (jobs.has(d.id)) { const done = jobs.get(d.id); jobs.delete(d.id); done(d); }
+  };
+  worker.onerror = e => { console.error('worker failed', e.message); killWorker(); };
+  return worker;
+}
+function killWorker() { if (worker) { worker.terminate(); worker = null; } jobs.clear(); }
+function killPonder() { if (pond) { killWorker(); pond = null; renderInfo(); } }
+function search(side) {                            // promise of the AI's best move for `side` in the current position
+  const task = { task: 'search', id: ++jobId, pieces: pieces.map(p => ({ ...p })), turn, winner, side, maxPlies: 2 * +aiDepth.value, ms: AI_MS };
+  return new Promise(resolve => {
+    let w = null;
+    try { w = startWorker(); } catch (e) { console.warn('no worker, searching on the main thread', e); }
+    if (w) { jobs.set(task.id, resolve); w.postMessage(task); }
+    else setTimeout(() => resolve(packResult(aiSearch(side, task.maxPlies, task.ms))), 50);
+  });
+}
+function startPonder() {                           // human to move against the AI: prepare answers to all their replies
+  if (pond || thinking || winner !== null || aiTurn() || roleSel.value === 'none' || roleSel.value === 'two') return;
+  let w; try { w = startWorker(); } catch (e) { return; }
+  pond = { table: new Map(), replies: 0, pruned: 0, depth: 0, done: false };
+  w.postMessage({ task: 'ponder', pieces: pieces.map(p => ({ ...p })), turn, winner, maxPlies: 2 * +aiDepth.value });
+  renderInfo();
+}
+
+let infoBase = 'AI search: no move computed yet.';   // status window under the buttons
+function renderInfo() {
+  document.getElementById('aiinfo').textContent = infoBase + (pond
+    ? `\nThinking along: ${pond.replies} possible replies (${pond.pruned} suicidal skipped), depth ${pond.depth}${pond.done ? ' (max)' : '...'}` : '');
+}
+function showAiInfo(side, r) {                     // how deep, from how many candidate moves
+  infoBase = `${NAME[side]} move: ${r.depth} plies deep (of ${2 * +aiDepth.value} max),
+from ${r.moves} legal moves, ${r.nodes.toLocaleString()} positions, ${r.pondered ? 'prepared while you thought.' : (r.ms / 1000).toFixed(1) + ' s.'}`;
+  renderInfo();
+}
 
 let aiPending = false, aiGen = 0;                  // aiGen changes on every new game so an old pending AI move is dropped
 function maybeAI() {
   if (aiPending || !aiTurn()) return;
   aiPending = true; thinking = true; updateUI();
-  const gen = aiGen;
-  const go = () => {
-    if (gen !== aiGen) return;
-    if (busy()) { setTimeout(go, 40); return; }    // wait until the last move has finished animating
-    aiPending = false;
-    if (!aiTurn()) { thinking = false; updateUI(); return; }   // the player setting changed meanwhile
-    const side = turn, r = aiSearch(side);
-    thinking = false;
-    apply(pieces[r.mv.i], r.mv.m, `${NAME[side]} AI (${r.depth} plies)`);
-    draw();
-  };
-  setTimeout(go, 50);                              // let the browser paint first
-}
-
-function inState(s, fn) {                          // run engine code (legal/step) on a cloned state
-  const sp = pieces, st = turn, sw = winner;
-  pieces = s.pieces; turn = s.turn; winner = s.winner;
-  try { return fn(); } finally { pieces = sp; turn = st; winner = sw; }
-}
-function genMoves(s) {
-  return inState(s, () => {
-    const out = [];
-    s.pieces.forEach((p, i) => { if (p.owner === s.turn) for (const m of legal(p)) out.push({ i, m }); });
-    return out.sort((a, b) => PRIO[a.m.kind] - PRIO[b.m.kind]);
+  const gen = aiGen, side = turn, hit = ponderHit; ponderHit = null;
+  // an answer prepared while the human was thinking is used at once if it is about as deep as a normal search would get
+  const usable = hit && hit.depth >= Math.max(4, Math.min(2 * +aiDepth.value, lastAiDepth));
+  (usable ? Promise.resolve({ ...hit, pondered: true }) : search(side)).then(r => {
+    const go = () => {
+      if (gen !== aiGen) return;
+      if (busy()) { setTimeout(go, 40); return; }    // wait until the last move has finished animating
+      aiPending = false; thinking = false;
+      const p = r.mv && at(r.mv.fx, r.mv.fy), m = p && legal(p).find(q => msig(p, q) === r.mv.sig);
+      if (!aiTurn() || turn !== side || !m) { updateUI(); startPonder(); return; }   // the player setting changed meanwhile
+      if (!r.pondered) lastAiDepth = r.depth;
+      showAiInfo(side, r);
+      apply(p, m, `${NAME[side]} AI (${r.depth} plies${r.pondered ? ', prepared' : ''})`);
+      draw();
+      startPonder();
+    };
+    go();
   });
 }
-function child(s, mv) {
-  const c = { pieces: s.pieces.map(p => ({ ...p })), turn: s.turn, winner: s.winner };
-  inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
-  return c;
-}
-const EV = { astro: 100, fuel: 14, adv0: 16, adv1: 14, past: 450, near: 3, ready: 150, warpNow: 220, draw: -600 };   // evaluation weights (draw = score of a draw, negative = contempt)
-function canWarp(s, p) {                            // can this astronaut step into the enemy wormhole right now? (static check for the evaluation)
-  if (p.f || p.st > 0) return false;
-  const o = p.owner, hy = HOME[1 - o];
-  const adjacent = (p.x === 3 && p.y + DIR[o] === hy) || (p.y === hy && Math.abs(p.x - 3) === 1);
-  return adjacent && ARRIVE[o].some(([ax, ay]) => !s.pieces.some(q => q.f === 1 && q.x === ax && q.y === ay));
-}
-function evaluate(s) {                             // positive = good for Blue
-  let v = 0;
-  for (const p of s.pieces) {
-    let x = 0;
-    if (p.type === 'astro') {
-      const adv = p.owner === 0 ? 6 - p.y : p.y;
-      const toCore = Math.abs(p.x - 3) + Math.abs(p.y - HOME[1 - p.owner]);
-      x = EV.astro + EV.fuel * p.fuel + (p.f ? EV.adv1 : EV.adv0) * adv - 2 * Math.abs(p.x - 3) + (p.f ? EV.past : 0) + (p.sh ? 5 : 0)   // field 2 = past the wormhole
-        + EV.near * Math.max(0, 6 - toCore)              // close to the enemy wormhole / Core
-        + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0)   // can refuel next turn
-        + (canWarp(s, p) ? EV.ready : 0);                // one step from the enemy wormhole and a landing square is free
-    } else if (p.type === 'rover') x = 45 + (p.nolaser ? 0 : 40) + (nearStation(p) ? 10 : 0);   // rover guards the station
-    else if (p.type === 'drone') x = 40;
-    v += p.owner === 0 ? x : -x;
-  }
-  return v;
-}
-// Stepping into the wormhole is worth more the sooner it happens. Without this the search sees the same gain later in
-// the tree and happily postpones it forever (it is never forced to do it now).
-const warpBonus = (mv, ply) => mv.m.kind === 'warp' ? Math.max(0, EV.warpNow - ply * 40) : 0;
-function minimax(s, depth, alpha, beta, ply) {
-  if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
-  if (s.winner !== null) return s.winner === DRAW ? EV.draw : s.winner === aiSide ? 100000 - ply : ply - 100000;
-  const leaf = () => (aiSide === 0 ? 1 : -1) * evaluate(s) + (Math.random() - .5) * AI_NOISE;
-  if (depth === 0) return leaf();
-  const moves = genMoves(s);
-  if (!moves.length) return EV.draw;               // stalemate = draw
-  if (s.turn === aiSide) {
-    let best = -Infinity;
-    for (const mv of moves) {
-      const b = warpBonus(mv, ply);
-      best = Math.max(best, minimax(child(s, mv), depth - 1, alpha - b, beta - b, ply + 1) + b);
-      alpha = Math.max(alpha, best); if (alpha >= beta) break;
-    }
-    return best;
-  }
-  let best = Infinity;
-  for (const mv of moves) {
-    const b = warpBonus(mv, ply);
-    best = Math.min(best, minimax(child(s, mv), depth - 1, alpha + b, beta + b, ply + 1) - b);
-    beta = Math.min(beta, best); if (alpha >= beta) break;
-  }
-  return best;
-}
-function aiSearch(side = 0) {
-  aiSide = side;
-  const root = { pieces: pieces.map(p => ({ ...p })), turn, winner };
-  const moves = genMoves(root), maxPlies = 2 * +aiDepth.value;
-  aiDeadline = performance.now() + AI_MS; aiNodes = 0;
-  let best = moves[0], done = 0;
-  for (let d = 1; d <= maxPlies; d++) {
-    try {
-      let bv = -Infinity, bm = null;
-      for (const mv of moves) {
-        const b = warpBonus(mv, 0);
-        mv.v = minimax(child(root, mv), d - 1, bv - b, Infinity, 1) + b;
-        if (mv.v > bv) { bv = mv.v; bm = mv; }
-      }
-      best = bm; done = d;
-      moves.sort((a, b) => b.v - a.v);             // best first for the next, deeper pass
-      if (bv > 90000) break;                       // forced win found
-    } catch (e) { if (e !== 'timeout') throw e; break; }
-  }
-  return { mv: best, depth: done };
-}
-
-
 
 newGame(); draw();
 if (typeof window !== 'undefined') setInterval(() => { if (!looping && pieces) draw(); }, 50);
