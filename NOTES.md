@@ -18,7 +18,7 @@ so without `art/` the game runs but the pieces and backgrounds are missing.
 
 - **Left mouse:** press on a piece, drag a transparent copy to a highlighted square, release to make the real move
   (the real piece stays put while you drag, then animates).
-- **Release on the piece's own square:** refuel (only next to the sun).
+- **Drag onto the sun:** refuel (only for a piece standing next to the sun; the piece stays where it is, the move's target square is the sun hex).
 - **Right mouse on a rover:** click = fire the laser in its current facing direction. Drag toward one of the six directions = turn the laser
   (60 degree steps). Turning and firing are separate moves.
 - Buttons: New game, Undo move, Suggest move. A small text box below them (`#aiinfo`) shows depth, number of legal moves,
@@ -40,16 +40,26 @@ Pieces:
   3 fuel = up to 4 steps. A 1-step move ('walk', or 'capture' on an enemy) is free; a longer move ('jump', carries `cost`)
   flies over everything, costs distance - 1 fuel, may capture where it lands, and can never land on a Core, so only a
   single step onto the enemy Core wins. Cannot land on own pieces or the sun. Fuel max 3 (`MAXFUEL`), start 1
-  (`START_FUEL`). Refuels by 1 when next to the sun (6 neighbours) and spending the move. Capturing an astronaut steals
+  (`START_FUEL`). Refuels by 1 when next to the sun (drag it onto the sun; 6 neighbours) and spending the move.
+  **Overcharge:** an astronaut may hold the full fuel (3) for one move only. The move that fills it up marks it `hot`; on its
+  side's next move it must spend a charge by jumping (`kind` jump, cost >= 1) or it explodes (it is simply removed, no blast
+  on neighbours; a stunned or shield-covered hot astronaut explodes too). A jump that steals fuel and ends at 3 again makes it hot
+  again. `step` does this after every move (the `hot` field; the evaluation subtracts `EV.hot` = 40 for a hot astronaut, and the
+  search sees the explosion, so the AI plans around it: no explosions in 12 AI-vs-AI games). The UI shows a pulsing red ring and a !. Capturing an astronaut steals
   1 fuel (capped at 3). (Earlier rules, removed: forward/sideways steps only, hex-knight jumps for 1 fuel.)
 - **Fuel packs (rover and drone):** each carries 1 fuel unit (`VEH_FUEL`), starts full and refuels at the sun like an
-  astronaut (spend the move on its own square). An astronaut (fuel < 3) in the 6 neighbouring hexes of an own rover/drone with
+  astronaut (drag it onto the sun, it stays put). An astronaut (fuel < 3) in the 6 neighbouring hexes of an own rover/drone with
   fuel can play move kind `feed` (target = the vehicle's square): astronaut +1 fuel, vehicle -1, nobody moves. A vehicle's
   fuel is only used for feeding, never for moving. Drawn as one flame beside the vehicle.
-- **Rover:** moves 1 or 2 hexes along one of the six lines, no jumping, captures by moving onto an enemy (not a Core). Has a **laser**:
-  faint wobbling glow shows its aim; a shot destroys the first astronaut, drone or rover (either side, including own) in
-  line; the shooter stays intact, so in a rover duel the first to shoot wins. The beam stops at the sun and Cores.
-  (Earlier rule, removed: a beam hitting a rover burnt out both lasers; the `nolaser` flag is gone.)
+- **Rover:** moves exactly one hex in one of the six directions (it used to move 1 or 2), no jumping, captures by moving onto an enemy (not a Core). Has a
+  **laser that needs fuel**: the rover starts EMPTY (fuel 0), so at the start both lasers are off (grey emitter point, no beam).
+  It refuels at the sun like any piece (drag it onto the sun while next to it). With fuel (1 unit, `VEH_FUEL`) the faint
+  wobbling glow shows its aim; a shot (right-click) destroys the first astronaut, drone or rover (either side, including own) in
+  line, stops at the sun and Cores, and uses the fuel up (enough for a single shot). The shooter stays intact, so in a rover duel the
+  first to shoot wins. Turning the aim (right-drag, one move, six directions) works without fuel. The fuel can instead feed a
+  neighbouring astronaut (`feed`). The AI only generates laser/aim moves while the rover has fuel; the evaluation gives an armed
+  rover `EV.rover + EV.armed` (50 + 35) and an empty one `EV.rover`.
+  (Earlier rules, removed: a beam hitting a rover burnt out both lasers; the rover started with fuel and always had its laser.)
 - **Drone:** moves up to 3 hexes along any of the six lines, no jumping, cannot capture by moving. Dropping it on an enemy
   in range pushes that piece one square further along the line and the drone takes its square. The pushed piece is
   stunned for its next turn. Pushed off the board, or into one of the drone owner's own pieces = captured. Blocked if
@@ -70,8 +80,9 @@ Pieces:
   hex size at 70% opacity, rim in the team colour. Starts two rows straight in front of the Core: Blue (4,6), Red (4,2).
 - **Setup** (given as column,row): four astronauts per side (the front astronaut was removed). Blue: Core (4,8);
   astronauts (0,8), (3,8), (5,8), (8,8); drone (1,7), rover (7,7), shield (4,6). Red is Blue mirrored top to bottom (row -> 8-row), same
-  columns: Core (4,0), astronauts (0,0), (3,0), (5,0), (8,0), drone (1,1), rover (7,1), shield (4,2). Both rovers start with the laser
-  aimed west (into the board; the rover stands at the east edge). Rotation by 180 degrees is NOT a symmetry (odd rows
+  columns: Core (4,0), astronauts (0,0), (3,0), (5,0), (8,0), drone (1,1), rover (7,1), shield (4,2). Both rovers start empty (laser off)
+  with the aim pointing away from the board: Red NW (up), Blue SW (down). A pointy-top hex board has no exact north or south, so
+  these two (the vertical mirror of each other) stand for it; nothing is in line at the start. Rotation by 180 degrees is NOT a symmetry (odd rows
   are shifted), the vertical mirror is.
 - **Winning:** walk an astronaut onto the enemy Core. Rovers and drones can never win.
 - **Draws:** neither side has an astronaut left, the player to move has no legal move, or threefold repetition.

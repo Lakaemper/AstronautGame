@@ -72,4 +72,27 @@ changed, worth a bigger test.
 ## What changed in `index.html`
 
 Only the engine script: `EV` now `{ fuel: 55, qs: 4, ... }` and the new function `qsearch`, called from `minimax` at depth 0.
-Nothing was pushed or deployed.
+Not deployed to the server (the later rule changes of the same day touched the rules code too, see NOTES.md).
+
+## Later tests (same day, after the rover, overcharge and refuel changes)
+
+Same method (AI-vs-AI duels, colours swapped, 24 games each, 1.5 s per move) against the current weights.
+
+| variant (A) | A wins | B wins | draws / capped |
+|---|---|---|---|
+| rover armed value 0 | 13 | 9 | 2 |
+| rover armed value 70 | 12 | 12 | 0 |
+| rover armed value 120 | 9 | 10 | 5 |
+| rover base value 85 | 9 | 12 | 3 |
+| bonus 30 for an empty rover at the sun | 9 | 13 | 2 |
+| bonus 60 for an empty rover at the sun + armed 70 (before overcharge existed) | 16 | 5 | 3 |
+| the same two, after overcharge | 12 | 10 | 2 |
+| overcharge penalty `hot` 0 (default 40) | 9 | 13 | 2 |
+| overcharge penalty `hot` 120 | 7 | 15 | 2 |
+| fuel weight 40 (default 55) | 8 | 14 | 2 |
+
+Conclusion: the defaults (`fuel` 55, `hot` 40, rover 50 + armed 35) stay. The 16 to 5 result did not repeat.
+In 12 games the AI never let an astronaut explode from overcharge; its rovers refuelled 8 times and fired one laser shot.
+
+First-move advantage: 50 AI-vs-AI games with identical settings (3 s per move, current rules): Blue (moves first) won 26, Red won 24,
+no draws (p = 0.89). No sign of a first-move advantage; a small one cannot be excluded with 50 games.

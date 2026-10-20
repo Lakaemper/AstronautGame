@@ -39,13 +39,15 @@
 <div id="rules">
   <h2>How to play</h2>
   <ul>
-    <li>Drag a piece, release to land it. Release on its own square to refuel (next to the sun, the fuel station).</li>
+    <li>Drag a piece, release to land it. To refuel, drag a piece that stands next to the sun onto the sun (the fuel station) and release: it stays where it is.</li>
     <li><span class="k" style="background:#3ddc84"></span>walk &nbsp;<span class="k" style="background:#35d0ff"></span>jump (steps &minus; 1 fuel) &nbsp;<span class="k" style="background:#ff4d5e"></span>capture &nbsp;<span class="k" style="background:#ffa733"></span>push &nbsp;<span class="k" style="background:#ffe14d"></span>refuel &nbsp;<span class="k" style="background:#ff9de2"></span>take fuel from a vehicle</li>
     <li><b>Goal:</b> walk an astronaut onto the enemy <b>Core</b> (the planet on its baseline). Rovers and drones cannot win.</li>
-    <li><b>Astronaut</b>: reaches every hex within <b>fuel + 1</b> steps (no fuel: the 6 neighbours; 3 fuel: up to 4 steps). One step is free; a longer move flies over everything and costs <b>steps &minus; 1</b> fuel; it may capture where it lands, but never lands on a Core (only a single step onto the Core wins). Capturing an astronaut steals 1 fuel.</li>
+    <li><b>Turns:</b> press <b>New game</b> to start (nothing moves before that); Blue moves first, and every turn is one move of one piece. The Core of the side to move pumps gently. Every astronaut starts with 1 fuel, the maximum is 3, and each refuel adds 1. The <b>Players</b> menu chooses who plays Blue and Red (a human or the AI, two humans, or two AIs), <b>Suggest move</b> shows what the AI would play, and <b>Undo move</b> takes back up to 4 moves.</li>
+    <li><b>Draw:</b> neither side has an astronaut left, the player to move has no legal move, or the same position occurs three times.</li>
+    <li><b>Astronaut</b>: reaches every hex within <b>fuel + 1</b> steps (no fuel: the 6 neighbours; 3 fuel: up to 4 steps). One step is free; a longer move flies over everything and costs <b>steps &minus; 1</b> fuel; it may capture where it lands, but never lands on a Core (only a single step onto the Core wins). Capturing an astronaut steals 1 fuel. <b>Overcharge:</b> an astronaut may hold the full 3 fuel for one move only. If it is full and does not jump (spend at least one fuel) on your next move, it explodes (a red pulsing ring and a ! warn you).</li>
     <li><b>Shield</b> (glass dome, one per side, it starts two rows in front of your Core): moves one hex in any direction, also onto occupied hexes (yours or the enemy's), but never onto a Core. Your own pieces can move under your own shield too (one piece per shield). Whatever is under a shield is completely protected (no capture, push or laser) <b>and cannot move</b> until the shield moves away. A shield cannot be captured, pushed or landed on; lasers stop at it. A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield after <b>two</b> of its turns (it shows cracks and turns more transparent after the first); a shield that has moved away heals on the next turn.</li>
-    <li><b>Rover and drone</b> carry one unit of fuel (they start with it and refuel at the sun like astronauts). An astronaut next to one of its own vehicles (any of the 6 neighbouring hexes) can drag onto it to take that unit: it only refuels, the astronaut stays where it is.</li>
-    <li><b>Rover</b>: 1–2 hexes along a straight line, no jumping. It also has a <b>laser</b> (faint glow = its aim): <b>right-click</b> the rover to fire in its facing direction, or <b>right-drag</b> toward one of the six directions to turn the laser that way. Turning is one move and firing is another. The beam destroys the first astronaut, drone or rover in line (either side, the shooter stays intact), so in a rover duel the first to shoot wins. It stops at the sun and Cores without harming them.</li>
+    <li><b>Rover and drone</b> carry one unit of fuel (the drone starts with it, the rover starts empty; both refuel at the sun like astronauts: drag them onto the sun). An astronaut next to one of its own vehicles (any of the 6 neighbouring hexes) can drag onto it to take that unit: it only refuels, the astronaut stays where it is.</li>
+    <li><b>Rover</b>: one hex in any of the six directions, no jumping. It also has a <b>laser</b> that needs fuel: without fuel the laser is off (grey point, no beam). Both rovers start empty and aiming away from the board (Red up-left, Blue down-left), so nothing is in line at the start. With fuel a faint glow shows its aim, and <b>right-click</b> fires one shot in the facing direction, which uses the fuel up; <b>right-drag</b> toward one of the six directions turns the laser that way (it works without fuel). Turning is one move and firing is another. The fuel can alternatively feed a neighbouring astronaut. The beam destroys the first astronaut, drone or rover in line (either side, the shooter stays intact), so in a rover duel the first to shoot wins. It stops at the sun and Cores without harming them.</li>
     <li><b>Drone</b>: up to 3 hexes along any of the six lines, no jumping; drop it on an enemy in range to push it one square away and take its square. A pushed piece is stunned for its next turn (zzz). Off the board, or into one of the drone's own pieces = captured.</li>
   </ul>
 </div>
@@ -112,7 +114,7 @@ function legal(p) {
   if (p.st > 0 || covered(p)) return out;            // stunned by a drone push, or frozen under a shield (the shield has to move first)
   const A = (x, y) => at(x, y);
   const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
-  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < VEH_FUEL && nearStation(p)) push(p.x, p.y, 'refuel');   // vehicles refuel at the sun too
+  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < VEH_FUEL && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // vehicles refuel at the sun too (drag them onto the sun; they stay put)
   if (p.type === 'shield') {                                           // one step to any neighbour, also onto occupied hexes (it then covers whatever stands there)
     for (const [dx, dy] of HEX6) {
       const x = p.x + dx, y = p.y + dy;
@@ -134,12 +136,12 @@ function legal(p) {
       if (d === 1) push(x, y, t && !fs ? 'capture' : 'walk');          // a neighbouring hex: free (an enemy there is captured, a Core there wins)
       else if (!t || fs || !fixed(t)) push(x, y, 'jump', { cost: d - 1 });   // farther: flies over everything, costs distance - 1 fuel, may capture, never lands on a Core
     }
-    if (p.fuel < MAXFUEL && nearStation(p)) push(p.x, p.y, 'refuel');
+    if (p.fuel < MAXFUEL && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // drag the astronaut onto the sun: it stays where it is and takes fuel
     if (p.fuel < MAXFUEL) for (const v of pieces)                      // feed: take the fuel pack of an own rover/drone in the 8-neighbourhood (the astronaut stays put)
       if (v.owner === o && (v.type === 'rover' || v.type === 'drone') && v.fuel > 0 && !covered(v) && hexDist(v.x, v.y, p.x, p.y) === 1) push(v.x, v.y, 'feed');
   } else if (p.type === 'rover') {
     for (const [dx, dy] of HEX6) {
-      for (let s = 1; s <= 2; s++) {
+      for (let s = 1; s <= 1; s++) {                                 // the rover moves one hex only
         const x = p.x + dx * s, y = p.y + dy * s;
         if (!inB(x, y) || isStation(x, y)) break;
         const t = A(x, y);
@@ -149,7 +151,7 @@ function legal(p) {
         break;
       }
     }
-    HEX6.forEach(([dx, dy], i) => {  // a shot that hits something goes in the current facing; turning toward a target is a move of its own
+    if (p.fuel > 0) HEX6.forEach(([dx, dy], i) => {  // the laser needs fuel. A shot that hits something goes in the current facing; turning toward a target is a move of its own
       const v = beamTrace(p, dx, dy).victim;
       if (v) push(v.x, v.y, i === p.dir ? 'laser' : 'aim', { dx, dy });
     });
@@ -189,6 +191,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
   } else if (m.kind === 'laser') {
     p.dir = HEX6.findIndex(([a, b]) => a === m.dx && b === m.dy);
     const tr = beamTrace(p, m.dx, m.dy), v = tr.victim;
+    p.fuel = Math.max(0, p.fuel - 1);                // the fuel is enough for a single shot
     if (v) {                                         // the target is destroyed (a rover too, own pieces included); the shooter stays intact
       pieces.splice(pieces.indexOf(v), 1);
       text = `${NAME[p.owner]} rover lasers ${v.owner === p.owner ? 'its own' : 'an enemy'} ${v.type === 'astro' ? 'astronaut' : v.type}!`;
@@ -223,6 +226,13 @@ function step(p, m) {                              // mutates pieces/turn/winner
     if (q.owner !== turn) return;
     q.st = 0;
   });
+  // Overcharge: an astronaut may hold the full fuel for one move only. After the move that fills it up it is `hot`; on its side's
+  // next move it has to spend a charge (a jump) or it explodes. Only the astronaut that jumps can spend its own fuel.
+  if (winner === null) for (const q of pieces.slice()) {
+    if (q.type !== 'astro' || q.owner !== turn) continue;
+    if (q.hot && !(q === p && m.kind === 'jump')) { pieces.splice(pieces.indexOf(q), 1); text += ' An overcharged astronaut explodes!'; }
+    else q.hot = q.fuel >= MAXFUEL ? 1 : 0;
+  }
   for (const sh of pieces.slice()) if (sh.type === 'shield') {      // a shield on an enemy piece is worn down by that side's turns, a free shield heals
     const c = pieces.find(q => q !== sh && q.x === sh.x && q.y === sh.y);
     if (c && c.owner !== sh.owner) {
@@ -262,7 +272,7 @@ const ZR = Int32Array.from({ length: 2 * 5 * XN * ROWS }, (_, i) => Math.imul(i 
 function hashState(s) {
   let h = s.turn ? 0x5bd1e995 : 0;
   for (const p of s.pieces) {
-    const attr = p.fuel + 4 * p.st + 8 * p.dir + 64 * p.dmg + 128 * p.hl;
+    const attr = p.fuel + 4 * p.st + 8 * p.dir + 64 * p.dmg + 128 * p.hl + 256 * (p.hot || 0);
     h ^= Math.imul(ZR[((p.owner * 5 + TYPEI[p.type]) * ROWS + p.y) * XN + p.x], 2 * attr + 1);
   }
   return h | 0;
@@ -292,7 +302,7 @@ function child(s, mv) {
   inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
   return c;
 }
-const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4 };   // evaluation weights (draw = score of a draw, negative = contempt)
+const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, rover: 50, armed: 35, rsun: 0, hot: 40 };   // evaluation weights (draw = score of a draw, negative = contempt)
 function evaluate(s) {                             // positive = good for Blue
   let v = 0;
   for (const p of s.pieces) {
@@ -303,8 +313,9 @@ function evaluate(s) {                             // positive = good for Blue
       x = EV.astro + EV.fuel * p.fuel + EV.adv * adv - 2 * Math.abs(colOf(p.x, p.y) + (p.y & 1) / 2 - MIDC - .25)
         + EV.near * Math.max(0, 8 - toCore)              // close to the enemy Core
         + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0)   // can refuel next turn
-        + (toCore === 1 ? 150 : 0);                      // one step from the Core
-    } else if (p.type === 'rover') x = 85 + (nearStation(p) ? 10 : 0);   // rover guards the station
+        + (toCore === 1 ? 150 : 0)                       // one step from the Core
+        - (p.hot ? EV.hot : 0);                          // fully charged for a move already: it has to jump next time or it explodes
+    } else if (p.type === 'rover') x = EV.rover + (p.fuel > 0 ? EV.armed : 0) + (nearStation(p) ? 10 : 0) + (p.fuel === 0 && nearStation(p) ? EV.rsun : 0);   // an armed rover (fuel for one laser shot) is worth much more
     else if (p.type === 'drone') x = 40;
     else if (p.type === 'shield') x = 40;
     if (p.type === 'rover' || p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
@@ -436,6 +447,7 @@ function hexPath(ctx, cx, cy, r) {
 }
 const UNDO_DEPTH = 4;
 let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {}, aim = null;
+let started = false;                              // nothing moves (not even the AI) until the user presses "New game"
 const anims = new Map();                        // piece -> running move animation
 let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
 const busy = () => performance.now() < animUntil;
@@ -453,16 +465,16 @@ function newGame() {
     put('rover', COLS - 2, ROWS - 2);
   });
   seen[posKey()] = 1;
-  say('Blue moves first.');
+  say(started ? 'Blue moves first.' : 'Press "New game" to start.');
   updateUI();
   maybeAI();
   startPonder();
 }
-function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? START_FUEL : (type === 'core' || type === 'shield') ? 0 : VEH_FUEL, st: 0, dmg: 0, hl: 0, dir: 3 }); }   // dir: rover aim (index into HEX6): both rovers start aiming west, into the board
+function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? START_FUEL : (type === 'core' || type === 'shield' || type === 'rover') ? 0 : VEH_FUEL, st: 0, dmg: 0, hl: 0, hot: 0, dir: owner ? 2 : 4 }); }   // dir: rover aim (index into HEX6). The rovers start aiming away from the board, Red up (NW) and Blue down (SW), so nothing is in line at the start
 function say(t) { msg = t; document.getElementById('msg').textContent = t; }
 
 function posKey() {
-  return turn + ':' + pieces.map(q => [q.type[0], q.owner, q.x, q.y, q.fuel, q.st, q.dir, q.dmg, q.hl].join()).sort().join('|');
+  return turn + ':' + pieces.map(q => [q.type[0], q.owner, q.x, q.y, q.fuel, q.st, q.dir, q.dmg, q.hl, q.hot].join()).sort().join('|');
 }
 function drawCheck() {                             // stalemate and threefold repetition (real game only, not the search)
   if (winner !== null) return '';
@@ -517,6 +529,11 @@ function animate(p, m, before, pos) {
   let tArr = 0, until = 0;
   const a = (m.kind === 'laser' || m.kind === 'aim') ? null : (m.kind === 'refuel' || m.kind === 'feed') ? pulseAnim(pos.get(p)) : buildAnim(p, m, pos.get(p));
   if (a) { anims.set(p, { t0: now, segs: a.segs }); tArr = a.tArrive; until = a.tEnd; }
+  if (!pieces.includes(p)) {                                    // the mover itself was overcharged: it makes its move, then explodes there
+    const o = pos.get(p), d = tArr || SHIFT;
+    ghosts.push({ p, o, until: now + d, move: { dx: p.x - o.x, dy: p.y - o.y, t0: now, d } });
+    fx.push({ x: p.x, y: p.y, t0: now + d }); until = Math.max(until, d + FX_MS);
+  }
   for (const q of before) {
     if (q === p) continue;
     const o = pos.get(q);
@@ -544,7 +561,7 @@ function apply(p, m, who) {
   history.push({ pieces: pieces.map(q => ({ ...q })), turn, winner, lastMove, msg, seen: { ...seen } });   // undo point before every move, last 4 kept
   if (history.length > UNDO_DEPTH) history.shift();
   hint = null;
-  lastMove = [{ x: p.x, y: p.y }, { x: m.x, y: m.y }];
+  lastMove = m.kind === 'refuel' ? [{ x: p.x, y: p.y }] : [{ x: p.x, y: p.y }, { x: m.x, y: m.y }];   // refuelling: the piece does not move
   if (m.kind === 'laser') {
     const tr = beamTrace(p, m.dx, m.dy);
     fx.push({ type: 'beam', dx: m.dx, dy: m.dy, x0: p.x, y0: p.y, x1: tr.ex, y1: tr.ey, owner: p.owner, t0: performance.now() });
@@ -559,8 +576,8 @@ function apply(p, m, who) {
 
 function updateUI() {
   const el = document.getElementById('turn');
-  el.textContent = winner === DRAW ? 'Draw!' : winner !== null ? `${NAME[winner]} wins!` : `${NAME[turn]} to move` + (thinking ? ' (thinking…)' : '');
-  el.style.color = COLOR[winner !== null ? winner : turn];
+  el.textContent = !started ? 'Press "New game"' : winner === DRAW ? 'Draw!' : winner !== null ? `${NAME[winner]} wins!` : `${NAME[turn]} to move` + (thinking ? ' (thinking…)' : '');
+  el.style.color = !started ? '#5b5a55' : COLOR[winner !== null ? winner : turn];
 }
 
 // ---------- input ----------
@@ -575,6 +592,7 @@ function cellOf(e) {                                // which hex is under the po
 }
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
+  if (!started) { say('Press "New game" to start.'); return; }
   if (winner !== null || thinking || aiTurn() || busy()) return;
   const c = cellOf(e), p = inB(c.x, c.y) && at(c.x, c.y);
   if (!p || p.owner !== turn || p.type === 'core') return;
@@ -605,7 +623,10 @@ cv.addEventListener('pointermove', e => {
 cv.addEventListener('pointerup', e => {
   if (aim) {                                         // right-drag = turn the laser (one move), right-click = fire in the current facing (one move)
     const { p, dir, turn: dragged } = aim; aim = null;
-    if (!dragged) { const [dx, dy] = HEX6[p.dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y }); }
+    if (!dragged) {
+      if (p.fuel < 1) { say('The laser has no fuel. Move the rover next to the sun and drag it onto the sun to refuel it.'); draw(); return; }
+      const [dx, dy] = HEX6[p.dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y });
+    }
     else if (dir === p.dir) say('The laser already points that way. Right-click the rover to fire.');
     else { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'aim', dx, dy, x: p.x, y: p.y }); }
     draw(); return;
@@ -619,8 +640,9 @@ cv.addEventListener('pointerup', e => {
   draw();
 });
 cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
-document.getElementById('reset').onclick = () => { newGame(); draw(); };
+document.getElementById('reset').onclick = () => { started = true; newGame(); draw(); };
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
+  if (!started) { say('Press "New game" to start.'); return; }
   if (thinking || winner !== null || aiTurn() || busy()) return;
   killPonder();
   thinking = true; updateUI();
@@ -883,7 +905,7 @@ function drawField(now, vis) {
   }
 
   for (const p of pieces) {                          // faint, wobbling glow along each rover's aim
-    if (p.type !== 'rover' || covered(p)) continue;                 // no glow for a rover frozen under a shield
+    if (p.type !== 'rover' || covered(p) || p.fuel < 1) continue;   // no glow for a rover frozen under a shield or without fuel (no laser)
     const [dx, dy] = HEX6[aim && aim.p === p ? aim.dir : p.dir], tr = beamTrace(p, dx, dy), armed = aim && aim.p === p;
     const [x0, y0, x1, y1] = beamPoints(...cxy(p.x, p.y), ...cxy(tr.ex, tr.ey));
     g.lineCap = 'round'; g.lineJoin = 'round';
@@ -905,6 +927,7 @@ function drawField(now, vis) {
   for (const gh of ghosts) {                         // captured pieces stay visible until the attacker arrives
     if (now > gh.until) continue;
     let v = null;
+    if (gh.move) { const u = Math.min(1, (now - gh.move.t0) / gh.move.d), e = u * u * (3 - 2 * u); v = { x: gh.o.x + gh.move.dx * e, y: gh.o.y + gh.move.dy * e, lift: 0, scale: 1, alpha: 1, ang: 0, side: 1, flame: false }; }
     if (gh.slide && now > gh.slide.t0) {             // shoved off the board: slide out, shrink, fade
       const u = (now - gh.slide.t0) / gh.slide.d;
       v = { x: gh.o.x + gh.slide.dx * u, y: gh.o.y + gh.slide.dy * u, lift: 0, scale: 1 - .35 * u, alpha: 1 - u, ang: 0, side: 1, flame: false };
@@ -982,6 +1005,11 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   const bs = (1 - .25 * L) * sc;
   g.fillStyle = L ? '#0002' : '#0003'; g.beginPath(); g.ellipse(cx + 3 * s, by + 4 * s, 34 * s * bs, 10 * s * bs, 0, 0, 7); g.fill();
   crayon(() => g.ellipse(cx, by, 34 * s * bs, 10 * s * bs, 0, 0, 7), COLOR[o], 3);
+  if (p.hot) {                                       // overcharged: pulsing red warning ring (it must jump next time or it explodes)
+    const pulse = .5 + .5 * Math.sin(now / 110);
+    g.strokeStyle = `rgba(255,40,40,${.45 + .55 * pulse})`; g.lineWidth = 4 + 3 * pulse;
+    g.beginPath(); g.ellipse(cx, by, (40 + 4 * pulse) * s * bs, (13 + 2 * pulse) * s * bs, 0, 0, 7); g.stroke();
+  }
   g.save();                                          // body: lifted and scaled up during a flight (3D)
   const k = (1 + .45 * L) * sc;
   g.translate(0, -L * 42 * s); g.translate(cx, by); g.scale(k, k); g.translate(-cx, -by);
@@ -999,9 +1027,12 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   } else if (p.type === 'rover') {
     drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
     const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), ex = Math.cos(th), ey = Math.sin(th);   // laser emitter nub
-    crayon(() => g.arc(cx + ex * 36 * s, cy + 2 * s + ey * 30 * s, 8 * s, 0, 7), '#ff3b3b', 2.5);
+    crayon(() => g.arc(cx + ex * 36 * s, cy + 2 * s + ey * 30 * s, 8 * s, 0, 7), p.fuel > 0 ? '#ff3b3b' : '#8d8d8d', 2.5);   // grey point = no fuel, laser off
   } else {                                           // core: a planet
-    sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s, 80 * s);
+    const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
+    const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
+    if (act) g.globalAlpha *= 1 - .3 * w;
+    sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s + (h - 80 * s) / 2, h);
   }
   g.filter = 'none';
   if (p.st > 0) {                                    // zzz in crayon lettering
@@ -1010,6 +1041,10 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
       g.font = `bold ${26 * kk * s}px "Comic Sans MS","Chalkboard SE",cursive`;
       g.strokeText(t, cx + 38 * dx * s, cy + 38 * dy * s); g.fillText(t, cx + 38 * dx * s, cy + 38 * dy * s);
     }
+  }
+  if (p.hot) {                                       // red exclamation mark above the head
+    g.font = `bold ${30 * s}px "Comic Sans MS","Chalkboard SE",cursive`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('!', cx + 26 * s, cy - 38 * s); g.fillStyle = '#e01010'; g.fillText('!', cx + 26 * s, cy - 38 * s);
   }
   if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
     const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
@@ -1027,7 +1062,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
 const roleSel = document.getElementById('role'), aiDepth = document.getElementById('depth');
 
 const aiPlays = side => roleSel.value === 'none' || (roleSel.value === 'red' && side === 0) || (roleSel.value === 'blue' && side === 1);
-const aiTurn = () => winner === null && aiPlays(turn);   // 'No human': the AI moves for both sides
+const aiTurn = () => started && winner === null && aiPlays(turn);   // 'No human': the AI moves for both sides
 roleSel.onchange = () => { killPonder(); maybeAI(); startPonder(); };
 
 // The searches run in a Web Worker built from the engine script, so the board stays responsive. While the human is
@@ -1067,7 +1102,7 @@ function search(side) {                            // promise of the AI's best m
   });
 }
 function startPonder() {                           // human to move against the AI: prepare answers to all their replies
-  if (pond || thinking || winner !== null || aiTurn() || roleSel.value === 'none' || roleSel.value === 'two') return;
+  if (!started || pond || thinking || winner !== null || aiTurn() || roleSel.value === 'none' || roleSel.value === 'two') return;
   let w; try { w = startWorker(); } catch (e) { return; }
   pond = { table: new Map(), replies: 0, pruned: 0, depth: 0, done: false };
   w.postMessage({ task: 'ponder', pieces: pieces.map(p => ({ ...p })), turn, winner, maxPlies: 2 * +aiDepth.value });
