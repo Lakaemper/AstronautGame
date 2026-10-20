@@ -38,7 +38,7 @@ The six directions `HEX6` are E, NE, NW, W, SW, SE (screen angle = -60 degrees x
 Pieces:
 - **Astronaut:** fuel is range. It can reach every hex within `fuel + 1` steps (hex distance): 0 fuel = the 6 neighbours,
   3 fuel = up to 4 steps. A 1-step move ('walk', or 'capture' on an enemy) is free; a longer move ('jump', carries `cost`)
-  flies over everything, costs distance - 1 fuel, may capture where it lands, and can never land on a Core, so only a
+  flies over everything except the sun (the sun cannot be crossed even in the air, see `flyDist`: two hexes on a straight line with the sun strictly between them are one step further apart, so the far side is 3 away, not 2), costs distance - 1 fuel, may capture where it lands, and can never land on a Core, so only a
   single step onto the enemy Core wins. Cannot land on own pieces or the sun. Fuel max 3 (`MAXFUEL`), start 1
   (`START_FUEL`). Refuels by 1 when next to the sun (drag it onto the sun; 6 neighbours) and spending the move.
   **Overcharge:** an astronaut may hold the full fuel (3) for one move only. The move that fills it up marks it `hot`; on its
