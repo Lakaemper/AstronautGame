@@ -292,7 +292,7 @@ function child(s, mv) {
   inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
   return c;
 }
-const EV = { astro: 100, fuel: 14, vfuel: 6, adv: 16, near: 5, draw: -600 };   // evaluation weights (draw = score of a draw, negative = contempt)
+const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4 };   // evaluation weights (draw = score of a draw, negative = contempt)
 function evaluate(s) {                             // positive = good for Blue
   let v = 0;
   for (const p of s.pieces) {
@@ -317,11 +317,31 @@ function cutoff(mv, ply, depth) {                  // remember a move that cause
   const kl = killers[ply] || (killers[ply] = []);
   if (kl[0] !== mv.k) { kl[1] = kl[0]; kl[0] = mv.k; }
 }
+// Quiescence search: at the end of the normal search keep playing out captures and laser shots, so that a position is never
+// judged while a piece is hanging (the plain static evaluation would miss a free capture or a pending laser kill). The side to
+// move may always "stand pat" (decline every capture). EV.qs = how many extra plies (0 = off).
+function qsearch(s, alpha, beta, ply, qd) {
+  if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
+  const stand = (aiSide === 0 ? 1 : -1) * evaluate(s) + (Math.random() - .5) * AI_NOISE;
+  if (qd === 0) return stand;
+  const maxi = s.turn === aiSide;
+  let best = stand;
+  if (maxi) { if (best >= beta) return best; if (best > alpha) alpha = best; }
+  else { if (best <= alpha) return best; if (best < beta) beta = best; }
+  for (const mv of genMoves(s, ply)) {
+    if (mv.m.kind !== 'capture' && mv.m.kind !== 'laser') continue;
+    const c = child(s, mv);
+    const v = c.winner !== null ? (c.winner === DRAW ? EV.draw : c.winner === aiSide ? 100000 - ply : ply - 100000) : qsearch(c, alpha, beta, ply + 1, qd - 1);
+    if (maxi) { if (v > best) best = v; if (best > alpha) alpha = best; } else { if (v < best) best = v; if (best < beta) beta = best; }
+    if (alpha >= beta) break;
+  }
+  return best;
+}
 function minimax(s, depth, alpha, beta, ply) {
   if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
   if (s.winner !== null) return s.winner === DRAW ? EV.draw : s.winner === aiSide ? 100000 - ply : ply - 100000;
   const leaf = () => (aiSide === 0 ? 1 : -1) * evaluate(s) + (Math.random() - .5) * AI_NOISE;
-  if (depth === 0) return leaf();
+  if (depth === 0) return EV.qs > 0 ? qsearch(s, alpha, beta, ply, EV.qs) : leaf();
   const h = hashState(s), ti = h & TT_MASK, moves = genMoves(s, ply, ttKey[ti] === h ? ttMove[ti] : -1);
   if (!moves.length) return EV.draw;               // stalemate = draw
   let best = s.turn === aiSide ? -Infinity : Infinity, bm = moves[0];
