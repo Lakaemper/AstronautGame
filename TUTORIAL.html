@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Astro Game: how every piece moves</title>
+<style>
+  :root { --bg:#0b1230; --paper:#f6efdc; --ink:#1a1a1a; --dim:#5b5a55; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 "Comic Sans MS","Chalkboard SE","Comic Neue",cursive,sans-serif; padding:22px 14px 60px; }
+  #space { position:fixed; inset:0; width:100vw; height:100vh; z-index:-1; }
+  header, main { max-width:1280px; margin:0 auto; }
+  header { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 22px; box-shadow:5px 6px 0 #0007; margin-bottom:24px; }
+  h1 { margin:0; font-size:34px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
+  .sub { margin:2px 0 10px; font-size:19px; font-weight:700; }
+  header p { margin:6px 0; }
+  .key { display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:8px; font-size:14px; }
+  .key span { display:inline-flex; align-items:center; gap:6px; }
+  .key i { display:inline-block; width:14px; height:14px; border:2px solid #111; border-radius:4px; }
+  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(440px, 1fr)); gap:22px; }
+  .card { background:var(--paper); border:4px solid #111; border-radius:14px; padding:14px 16px 16px; box-shadow:5px 6px 0 #0007; }
+  .card.wide { grid-column:1 / -1; }
+  .card h2 { margin:0 0 8px; font-size:21px; color:#e8590c; -webkit-text-stroke:1px #111; paint-order:stroke fill; text-shadow:1.5px 1.5px 0 #111; }
+  .card p { margin:8px 0 0; }
+  .card ul { margin:8px 0 0; padding-left:20px; }
+  .card li { margin:3px 0; }
+  .pics { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:flex-start; }
+  .pics figure { margin:0; text-align:center; font-size:13px; color:var(--dim); }
+  canvas { max-width:100%; height:auto; border-radius:10px; border:3px solid #111; background:#1d4a31; display:block; }
+  .pics canvas { margin:0 auto; }
+  figcaption { margin-top:4px; }
+  .tag { display:inline-block; padding:0 8px; border:2px solid #111; border-radius:8px; font-weight:700; font-size:13px; background:#ffd24d; }
+  .back { display:inline-block; padding:2px 12px; border:3px solid #111; border-radius:10px; background:#ffd24d; color:#1a1a1a; font-weight:700; text-decoration:none; box-shadow:2px 3px 0 #111; }
+  .back:hover { background:#ffe27f; }
+  footer { max-width:1280px; margin:24px auto 0; color:#cdd6ff; text-align:center; font-size:13px; }
+</style>
+</head>
+<body>
+<canvas id="space" style="border:0;border-radius:0;background:transparent"></canvas>
+<header>
+  <h1>ASTRO GAME</h1>
+  <div class="sub">How every piece moves</div>
+  <p><a class="back" href="index.html">&larr; Back to the game</a></p>
+  <p><b>Goal:</b> walk an astronaut onto the enemy <b>Core</b> (the planet on its baseline). Each turn you move <b>one piece one time</b>; Blue moves first.
+     Drag a piece with the mouse and its legal squares light up; release on a lit square to move.</p>
+  <p>The pictures below are drawn by the game itself, so the pieces look exactly like on the board.</p>
+  <div class="key">
+    <span><i style="background:#3ddc84"></i>walk</span><span><i style="background:#35d0ff"></i>jump (costs fuel)</span>
+    <span><i style="background:#ff4d5e"></i>capture</span><span><i style="background:#ffa733"></i>push</span>
+    <span><i style="background:#ffe14d"></i>refuel</span><span><i style="background:#ff9de2"></i>take fuel from a vehicle</span>
+    <span><i style="background:#9fe3ff"></i>shield move</span>
+  </div>
+</header>
+<main id="cards"></main>
+<footer>Astro Game prototype &middot; pieces and artwork are drawn from the game files (<code>art/</code> folder next to this page).</footer>
+
+<script>
+/* ======== constants the game code expects ======== */
+const COLOR = ['#2f8fe8', '#e9475a', '#6b6b6b'];
+const MAXFUEL = 3, VEH_FUEL = 1;
+let g = null, aim = null, started = false, winner = null, turn = 0;
+let rdTimer = 0;
+function redrawAll() { cancelAnimationFrame(rdTimer); rdTimer = requestAnimationFrame(renderAll); }
+
+/* ======== code copied from the game (art loading, sprites, the real drawPiece) ======== */
+const ART = {};
+const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = 'art/' + file; ART[key] = im; };
+loadArt('sheet', 'AstroAnimsheet.png'); loadArt('sheetRed', 'AstroAnimsheetRed.png');
+loadArt('shipBlue', 'AstroShipBlue.png'); loadArt('shipRed', 'AstroShipRed.png');
+loadArt('fire', 'AstroFire.png'); loadArt('expl', 'AstroExplosion.png'); loadArt('bg', 'AstroBG.png');
+// source rectangles [x, y, w, h] inside the sheets
+const R = {
+  front: [205, 0, 108, 160], wave: [514, 0, 116, 160],
+  flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]],   // the same four flames, cropped to their real length so that all of them can be drawn at the same height
+  flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]],
+  boom: [[14, 0, 299, 200], [324, 0, 184, 200], [520, 0, 179, 200], [709, 0, 146, 200], [875, 0, 87, 200], [967, 0, 18, 200]],
+  sun: [2, 3, 115, 112], neptune: [217, 96, 73, 74], mars: [13, 114, 62, 62],
+  deco: [[115, 15, 131, 83], [249, 17, 75, 77], [331, 17, 47, 47], [297, 119, 54, 54], [85, 102, 123, 74],
+         [6, 180, 66, 69], [74, 167, 36, 34], [140, 185, 28, 29], [178, 153, 46, 48], [232, 186, 34, 36],
+         [270, 168, 35, 36], [321, 72, 40, 39], [85, 203, 47, 47], [181, 208, 41, 41], [276, 187, 99, 64]],
+};
+function sprite(im, r, cx, by, h) {
+  if (!im || !im.complete || !im.naturalWidth) return;
+  const w = r[2] * h / r[3];
+  g.drawImage(im, r[0], r[1], r[2], r[3], cx - w / 2, by - h, w, h);
+}
+function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+function crayon(path, color, lw = 3.5) {
+  g.save(); g.beginPath(); path(); g.fillStyle = color; g.fill(); g.clip();
+  g.strokeStyle = '#ffffff40'; g.lineWidth = 1.5;
+  for (let i = -120; i < 120; i += 7) { g.beginPath(); g.moveTo(i, 120); g.lineTo(i + 120, 0); g.stroke(); }
+  g.restore();
+  g.beginPath(); path(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#111'; g.stroke();
+}
+function wobblyPath(pts, seed, amp = 1.1) {          // closed shape through the points, edges a little uneven like hand-cut paper
+  const r = seeded(seed), P = pts.map(([x, y]) => [x + (r() - .5) * 2 * amp, y + (r() - .5) * 2 * amp]), n = P.length;
+  g.moveTo((P[0][0] + P[n - 1][0]) / 2, (P[0][1] + P[n - 1][1]) / 2);
+  for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; g.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+  g.closePath();
+}
+const circlePts = (x, y, r, n = 12) => Array.from({ length: n }, (_, i) => [x + Math.cos(i / n * 6.2832) * r, y + Math.sin(i / n * 6.2832) * r]);
+function paper(pathFn, color, { lw = 3, shade = .16, shadow = true } = {}) {
+  if (shadow) { g.save(); g.translate(2.2, 2.8); g.beginPath(); pathFn(); g.fillStyle = '#0000002e'; g.fill(); g.restore(); }   // this layer lies on the one below
+  g.save(); g.beginPath(); pathFn(); g.fillStyle = color; g.fill(); g.clip();
+  g.lineWidth = 1.1; g.strokeStyle = 'rgba(255,255,255,.3)';                                     // pencil strokes: light direction
+  for (let i = -100; i < 100; i += 5) { g.beginPath(); g.moveTo(i, 80); g.lineTo(i + 70, -10); g.stroke(); }
+  g.strokeStyle = `rgba(0,0,0,${shade})`;                                                        // a second, darker hatching direction
+  for (let i = -100; i < 100; i += 6) { g.beginPath(); g.moveTo(i, -80); g.lineTo(i + 60, 10); g.stroke(); }
+  g.restore();
+  g.beginPath(); pathFn(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#161616'; g.stroke();
+}
+function drawRover(cx, by, s, col) {                 // moon rover in paper-cut pencil style: wheels, chassis, solar panel, dome, dish
+  g.save(); g.translate(cx, by); g.scale(s * .92, s * .92);
+  const line = (x0, y0, x1, y1, w = 3) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineWidth = w; g.lineCap = 'round'; g.strokeStyle = '#161616'; g.stroke(); };
+  const cut = (pts, seed, color, o, amp) => paper(() => wobblyPath(pts, seed, amp), color, o);
+  // wheels with suspension arms
+  for (const [i, wx] of [-27, 0, 27].entries()) line(wx, -12, wx * .8, -25, 3.5);
+  for (const [i, wx] of [-27, 0, 27].entries()) {
+    cut(circlePts(wx, -12, 12.5, 14), 10 + i, '#454545', { lw: 3 }, .7);                          // tyre
+    g.save(); g.strokeStyle = '#ffffff55'; g.lineWidth = 1.2;                                     // tread
+    for (let k = 0; k < 14; k++) { const a = k / 14 * 6.2832; g.beginPath(); g.moveTo(wx + Math.cos(a) * 10.6, -12 + Math.sin(a) * 10.6); g.lineTo(wx + Math.cos(a) * 12, -12 + Math.sin(a) * 12); g.stroke(); }
+    g.restore();
+    cut(circlePts(wx, -12, 7.6, 10), 20 + i, '#b0b0b0', { lw: 2.2, shadow: false }, .5);          // rim
+    for (let k = 0; k < 5; k++) { const a = k / 5 * 6.2832 + i; line(wx + Math.cos(a) * 1.5, -12 + Math.sin(a) * 1.5, wx + Math.cos(a) * 7, -12 + Math.sin(a) * 7, 1.6); }
+    cut(circlePts(wx, -12, 2.8, 8), 30 + i, '#efe8d2', { lw: 1.8, shadow: false }, .3);          // hub
+  }
+  // mast and solar panel behind the body
+  line(26, -43, 24, -61, 3);
+  line(-15, -43, -15, -52, 3);
+  cut([[-37, -53], [-6, -60], [-2, -53], [-33, -46]], 40, '#2d57b3', { lw: 2.6, shade: .22 }, .6);
+  g.save(); g.strokeStyle = '#a8c4ff'; g.lineWidth = 1.2;                                         // solar cells
+  const lerp = (a, b, t) => a + (b - a) * t;
+  for (const t of [.25, .5, .75]) { g.beginPath(); g.moveTo(lerp(-37, -6, t), lerp(-53, -60, t)); g.lineTo(lerp(-33, -2, t), lerp(-46, -53, t)); g.stroke(); }
+  g.beginPath(); g.moveTo(lerp(-37, -33, .5), lerp(-53, -46, .5)); g.lineTo(lerp(-6, -2, .5), lerp(-60, -53, .5)); g.stroke();
+  g.restore();
+  // chassis: team colour, darker skirt, cream stripe, hatch, rivets, headlight, bumper
+  cut([[-39, -27], [-37, -38], [-27, -43], [27, -43], [37, -37], [41, -28], [36, -21], [-34, -21]], 50, col, { lw: 3.4 }, .9);
+  cut([[-34, -21], [36, -21], [40, -27], [-38, -27]], 51, 'rgba(0,0,0,.2)', { lw: 1.8, shadow: false }, .4);
+  cut([[-34, -36], [29, -36], [33, -32], [-35, -32]], 52, '#f4ecd6', { lw: 2, shadow: false }, .5);
+  cut([[-24, -42], [-9, -42], [-9, -37], [-24, -37]], 53, 'rgba(255,255,255,.22)', { lw: 1.8, shadow: false }, .5);
+  for (const [rx, ry] of [[-34, -25], [-34, -39], [33, -25], [31, -40], [0, -25]]) { g.beginPath(); g.arc(rx, ry, 1.7, 0, 7); g.fillStyle = '#222'; g.fill(); }
+  cut([[40, -27], [49, -23], [48, -17], [38, -18]], 54, '#8f8f8f', { lw: 2.4 }, .5);
+  cut(circlePts(37.5, -32, 3.6, 8), 55, '#ffe27a', { lw: 1.8, shadow: false }, .3);
+  // cockpit dome (like the astronaut's visor) on a grey rim
+  cut([[-10, -43], [22, -43], [23, -39], [-11, -39]], 60, '#9a9a9a', { lw: 2.2 }, .5);
+  const dome = Array.from({ length: 9 }, (_, i) => [6 + Math.cos(Math.PI - i / 8 * Math.PI) * 15, -43 - Math.sin(Math.PI - i / 8 * Math.PI) * 16]);
+  cut(dome, 61, '#33aef2', { lw: 3 }, .5);
+  g.fillStyle = 'rgba(255,255,255,.88)'; g.beginPath(); g.ellipse(-.5, -52, 3.4, 6.2, -.5, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(12, -50, 1.8, 2.8, -.5, 0, 7); g.fill();
+  // dish on the mast
+  cut([[12, -66], [22, -73], [33, -68], [29, -60], [18, -61]], 70, '#e2dcc7', { lw: 2.4 }, .7);
+  line(23, -62, 28, -73, 2); g.beginPath(); g.arc(28.5, -74, 2.2, 0, 7); g.fillStyle = '#e8412e'; g.fill(); g.lineWidth = 1.4; g.strokeStyle = '#161616'; g.stroke();
+  g.restore();
+}
+function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
+const FLAME_K = [.78, .92, .95, 1];
+function flameUp(cx, baseY, f, h) { h *= FLAME_K[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }
+function fireGlow(cx, cy, r, a) {
+  const glow = g.createRadialGradient(cx, cy, 3, cx, cy, r);
+  glow.addColorStop(0, `rgba(255,195,70,${a})`); glow.addColorStop(1, 'rgba(255,120,20,0)');
+  g.fillStyle = glow; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+}
+const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
+function drawStation(cx, cy, s, now) {              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
+  s *= .8;
+  fireGlow(cx, cy, 78 * s, .4);
+  flameUp(cx - 27 * s, cy + 36 * s, flick(Math.floor(now / 130), 1), 60 * s);
+  flameUp(cx + 27 * s, cy + 36 * s, flick(Math.floor(now / 115), 2), 54 * s);
+  flameUp(cx, cy + 40 * s, flick(Math.floor(now / 100), 3), 96 * s);
+}
+function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one small flickering flame
+  fireGlow(cx, cy, 40 * s, .34);
+  flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
+}
+function drawShield(p, cx, cy, s, vis) {            // glass dome seen from above: a circle of hex size, 70% opaque
+  const L = vis ? vis.lift : 0, r = 47 * s;
+  g.save();
+  g.globalAlpha *= (p.dmg ? .42 : .7) * (vis && vis.alpha < 1 ? vis.alpha : 1);   // a cracked shield is more transparent
+  g.translate(0, -L * 10 * s);
+  const gr = g.createRadialGradient(cx - r * .35, cy - r * .4, r * .08, cx, cy, r);
+  gr.addColorStop(0, '#ffffff'); gr.addColorStop(.35, '#d4f3ff'); gr.addColorStop(.8, '#8fd8ff'); gr.addColorStop(1, '#4fb4ec');
+  g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = gr; g.fill();                                   // the dome
+  g.lineWidth = 5 * s; g.strokeStyle = COLOR[p.owner]; g.stroke();                                       // rim in the team colour
+  g.beginPath(); g.arc(cx, cy, r - 5 * s, 0, 7); g.lineWidth = 1.5 * s; g.strokeStyle = '#ffffffc0'; g.stroke();   // glass edge
+  g.beginPath(); g.ellipse(cx - r * .38, cy - r * .42, r * .2, r * .11, -.7, 0, 7); g.fillStyle = '#ffffffe0'; g.fill();   // highlight
+  g.beginPath(); g.arc(cx + r * .3, cy + r * .38, r * .07, 0, 7); g.fillStyle = '#ffffffa0'; g.fill();
+  if (p.dmg) {                                                                                           // cracks
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip(); g.lineJoin = 'round'; g.lineCap = 'round';
+    g.globalAlpha = .95 * (vis && vis.alpha < 1 ? vis.alpha : 1);                                          // cracks stay clearly visible
+    for (const [col, lw, off] of [['#ffffff', 4.6, 1.8], ['#0b1640', 2.6, 0]]) {
+      g.strokeStyle = col; g.lineWidth = lw * s;
+      for (const c of [[[-.05, -1], [.05, -.55], [-.12, -.2], [.1, .1], [0, .5], [.08, 1]], [[.1, .1], [.45, .2], [.6, .5], [.95, .55]], [[-.12, -.2], [-.5, -.1], [-.7, .25], [-1, .3]], [[.05, -.55], [.4, -.7], [.65, -.5], [.95, -.6]]]) {
+        g.beginPath(); c.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](cx + (x * r) + off * s, cy + (y * r) + off * s)); g.stroke();
+      }
+    }
+    g.restore();
+  }
+  g.restore();
+}
+const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
+function drawPiece(p, cx, cy, s, lifted, now, vis) {
+  if (p.type === 'fire') { drawFire(p, cx, cy, s, now); return; }
+  if (p.type === 'shield') { drawShield(p, cx, cy, s, vis); return; }
+  const o = p.owner, by = cy + 36 * s;               // by = feet line
+  const L = vis ? vis.lift : 0, sc = vis ? vis.scale : 1;   // L = height of a flight, sc = size
+  g.save();
+  if (vis && vis.alpha < 1) g.globalAlpha *= vis.alpha;
+  // team-coloured crayon base + soft shadow stay on the ground, so every piece is readable on any square
+  const bs = (1 - .25 * L) * sc;
+  g.fillStyle = L ? '#0002' : '#0003'; g.beginPath(); g.ellipse(cx + 3 * s, by + 4 * s, 34 * s * bs, 10 * s * bs, 0, 0, 7); g.fill();
+  crayon(() => g.ellipse(cx, by, 34 * s * bs, 10 * s * bs, 0, 0, 7), COLOR[o], 3);
+  if (p.hot) {                                       // overcharged: pulsing red warning ring (it must jump next time or it explodes)
+    const pulse = .5 + .5 * Math.sin(now / 110);
+    g.strokeStyle = `rgba(255,40,40,${.45 + .55 * pulse})`; g.lineWidth = 4 + 3 * pulse;
+    g.beginPath(); g.ellipse(cx, by, (40 + 4 * pulse) * s * bs, (13 + 2 * pulse) * s * bs, 0, 0, 7); g.stroke();
+  }
+  g.save();                                          // body: lifted and scaled up during a flight (3D)
+  const k = (1 + .45 * L) * sc;
+  g.translate(0, -L * 42 * s); g.translate(cx, by); g.scale(k, k); g.translate(-cx, -by);
+  if (p.st > 0) g.filter = 'grayscale(.7) brightness(.85)';   // stunned: washed out
+  if (p.type === 'astro') {
+    const side = vis ? vis.side : 1, idx = vis ? Math.round(vis.ang / 45) : 0;
+    if (lifted && p.fuel > 0) drawFlame(cx - 14 * s, by + 2 * s, 24 * s, now);   // jetpack flame while held in the air
+    if (vis && vis.flame) drawFlame(cx - 26 * s * side, by + 16 * s, 30 * s, now);            // jet flare under the pack
+    g.save();
+    if (side < 0 && idx > 0 && idx < 4 && !lifted) { g.translate(cx, 0); g.scale(-1, 1); g.translate(-cx, 0); }
+    sprite(o === 0 ? ART.sheet : ART.sheetRed, lifted ? R.wave : FRAMES[idx], cx, by + 2 * s, 84 * s);
+    g.restore();
+  } else if (p.type === 'drone') {
+    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, o === 0 ? 61 : 143, 160], cx, by + 2 * s, 76 * s);
+  } else if (p.type === 'rover') {
+    drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
+    const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
+    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92);
+    paper(() => wobblyPath([[10, -4.2], [28, -4.6], [34, -3.2], [34, 3.2], [28, 4.6], [10, 4.2]], 80, .5), '#5d5d5d', { lw: 2.6, shade: .2 });                       // dark steel, so it stands out against a red or blue chassis
+    paper(() => wobblyPath([[22, -4.6], [28, -4.8], [28, 4.8], [22, 4.6]], 83, .3), armed ? '#e8412e' : '#a8a8a8', { lw: 2, shadow: false });   // red band = armed
+    paper(() => wobblyPath([[6, -6], [13, -6], [13, 6], [6, 6]], 81, .4), '#3a3a3a', { lw: 2.2, shadow: false });                    // collar
+    paper(() => wobblyPath(circlePts(35, 0, 3.6, 8), 82, .3), armed ? '#ffd24d' : '#c4c4c4', { lw: 2, shadow: false });             // lens
+    g.restore();
+  } else {                                           // core: a planet
+    const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
+    const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
+    if (act) g.globalAlpha *= 1 - .3 * w;
+    sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s + (h - 80 * s) / 2, h);
+  }
+  g.filter = 'none';
+  if (p.st > 0) {                                    // zzz in crayon lettering
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 5; g.strokeStyle = '#111'; g.fillStyle = '#fff';
+    for (const [t, dx, dy, kk] of [['z', .35, -.2, .8], ['z', .6, -.62, 1], ['Z', .85, -1.1, 1.25]]) {
+      g.font = `bold ${26 * kk * s}px "Comic Sans MS","Chalkboard SE",cursive`;
+      g.strokeText(t, cx + 38 * dx * s, cy + 38 * dy * s); g.fillText(t, cx + 38 * dx * s, cy + 38 * dy * s);
+    }
+  }
+  if (p.hot) {                                       // red exclamation mark above the head
+    g.font = `bold ${30 * s}px "Comic Sans MS","Chalkboard SE",cursive`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('!', cx + 26 * s, cy - 38 * s); g.fillStyle = '#e01010'; g.fillText('!', cx + 26 * s, cy - 38 * s);
+  }
+  if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
+    const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
+    for (let i = 0; i < slots; i++) {
+      if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
+      sprite(ART.fire, R.flame[0], cx + (slots === 1 ? 36 : [-33, 33, 0][i]) * s, by + (i < 2 ? 10 : 14) * s, 24 * s);
+      g.filter = 'none';
+    }
+  }
+  g.restore();
+  g.restore();
+}
+
+/* ======== a tiny hex renderer for the diagrams ======== */
+const HS = 34, HW = HS * Math.sqrt(3), PSC = HW / 79, NOW = 4321;
+const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];       // E, NE, NW, W, SW, SE (axial)
+const ring = n => { const out = []; for (let r = -n; r <= n; r++) for (let q = -n; q <= n; q++) if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= n) out.push([q, r]); return out; };
+const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[0] + a[1] - b[0] - b[1]));
+const off2ax = (col, row) => [col - (row - (row & 1)) / 2, row];          // board (column,row), odd rows shifted right -> local axial
+const mk = (type, owner, q, r, o = {}) => ({ type, owner, q, r, x: q + 4, y: r, fuel: type === 'astro' ? 1 : type === 'drone' ? 1 : 0, st: 0, dmg: 0, hot: 0, dir: owner ? 2 : 4, ...o });
+const A = (q, r, o, fuel, e) => mk('astro', o, q, r, { fuel, ...e });
+const Rv = (q, r, o, fuel, dir) => mk('rover', o, q, r, { fuel, dir });
+const D = (q, r, o, fuel = 1) => mk('drone', o, q, r, { fuel });
+const S = (q, r, o, dmg = 0) => mk('shield', o, q, r, { dmg });
+const C = (q, r, o) => mk('core', o, q, r);
+const F = (q, r) => mk('fire', 2, q, r);
+const ST = (q, r) => mk('station', 2, q, r);
+const COL = { walk: '#3ddc84', jump: '#35d0ff', jump2: '#1fa3c8', capture: '#ff4d5e', push: '#ffa733', refuel: '#ffe14d', feed: '#ff9de2', cover: '#9fe3ff', no: '#ff4d5e' };
+const TILE = ['#2e6644', '#33704a', '#2b6040'];
+
+function hexPath(x, y, r) { g.beginPath(); for (let i = 0; i < 6; i++) { const a = (60 * i - 30) * Math.PI / 180; g[i ? 'lineTo' : 'moveTo'](x + r * Math.cos(a), y + r * Math.sin(a)); } g.closePath(); }
+function label(x, y, text, size = 15) {
+  g.font = `bold ${size}px "Comic Sans MS","Chalkboard SE",cursive`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+  g.lineWidth = 4.5; g.strokeStyle = '#111'; g.strokeText(text, x, y); g.fillStyle = '#fff'; g.fillText(text, x, y);
+}
+function arrowLine(pts, { color = '#ffd24d', dashed = false, head = true } = {}) {
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const [col, lw] of [['#111', 8], [color, 4.2]]) {
+    g.strokeStyle = col; g.lineWidth = lw; g.setLineDash(dashed ? [9, 7] : []);
+    g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x, y)); g.stroke();
+  }
+  g.setLineDash([]);
+  if (!head) return;
+  const [x1, y1] = pts[pts.length - 1], [x0, y0] = pts[pts.length - 2], a = Math.atan2(y1 - y0, x1 - x0);
+  for (const [col, w] of [['#111', 3], [color, 0]]) {
+    g.fillStyle = color; g.strokeStyle = '#111'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(x1 + Math.cos(a) * 7, y1 + Math.sin(a) * 7); g.lineTo(x1 + Math.cos(a + 2.5) * 15, y1 + Math.sin(a + 2.5) * 15); g.lineTo(x1 + Math.cos(a - 2.5) * 15, y1 + Math.sin(a - 2.5) * 15); g.closePath();
+    g.stroke(); g.fill(); break;
+  }
+}
+function trimEnds(pts, a, b) {                       // shorten both ends so the arrow does not cover the pieces it connects
+  const p = pts.map(q => q.slice()), mv = (from, to, d) => { const dx = to[0] - from[0], dy = to[1] - from[1], l = Math.hypot(dx, dy) || 1; return [from[0] + dx / l * d, from[1] + dy / l * d]; };
+  const n = p.length; p[0] = mv(pts[0], pts[1], a); p[n - 1] = mv(pts[n - 1], pts[n - 2], b); return p;
+}
+function drawBeam(x0, y0, x1, y1) {
+  g.lineCap = 'round';
+  for (const [w, c] of [[20, 'rgba(255,45,45,.30)'], [11, '#ff3b3b'], [6, '#4a86ff'], [2.4, '#ffffff']]) { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x0 + 3, y0 + 3); g.lineTo(x1 + 3, y1 + 3); g.stroke(); }
+}
+function diagram(cvs, spec) {
+  const w = spec.w || 340, h = spec.h || 290, dpr = 2;
+  cvs.width = w * dpr; cvs.height = h * dpr; cvs.style.width = w + 'px';
+  g = cvs.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const ox = spec.ox ?? w / 2, oy = spec.oy ?? h / 2, P = (q, r) => [ox + HW * (q + r / 2), oy + 1.5 * HS * r];
+  g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);
+  for (const [q, r] of (spec.cells || ring(spec.radius || 2))) {                   // tiles
+    const [x, y] = P(q, r); hexPath(x, y, HS - 1); g.fillStyle = TILE[(((q - r) % 3) + 3) % 3]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = '#173826'; g.stroke();
+  }
+  for (const hl of spec.hl || []) {                                                 // lit squares, like the game's drag hints
+    const [x, y] = P(hl[0], hl[1]); hexPath(x, y, HS - 4); g.fillStyle = (hl[2] || COL.walk) + '88'; g.fill();
+    g.setLineDash([8, 5]); g.lineWidth = 4.5; g.strokeStyle = '#111'; g.stroke(); g.lineWidth = 2.2; g.strokeStyle = '#fff'; g.stroke(); g.setLineDash([]);
+  }
+  for (const b of spec.beams || []) { const [x0, y0] = P(b[0], b[1]), [x1, y1] = P(b[2], b[3]); drawBeam(x0, y0, x1, y1); }
+  const pcs = (spec.pieces || []).slice().sort((a, b) => (a.type === 'shield') - (b.type === 'shield') || a.r - b.r || a.q - b.q);
+  for (const p of pcs) {
+    const [x, y] = P(p.q, p.r);
+    if (p.type === 'station') drawStation(x, y, PSC, NOW); else drawPiece(p, x, y, PSC, false, NOW);
+  }
+  for (const b of spec.booms || []) { const [x, y] = P(b[0], b[1]); sprite(ART.expl, R.boom[1], x, y + 34, 74); }
+  for (const a of spec.arrows || []) arrowLine(trimEnds(a.path.map(([q, r]) => P(q, r)), a.s0 ?? 16, a.s1 ?? 22), a);
+  for (const l of spec.labels || []) { const [x, y] = P(l[0], l[1]); label(x, y + (l[3] || 0), l[2], l[4] || 14); }
+}
+
+/* ======== the cards ======== */
+const startPieces = () => {
+  const out = [];
+  for (const o of [0, 1]) {
+    const m = row => (o ? 8 - row : row), put = (fn, col, row) => { const [q, r] = off2ax(col, m(row)); return fn(q, r); };
+    out.push(put((q, r) => C(q, r, o), 4, 8));
+    for (const c of [0, 3, 5, 8]) out.push(put((q, r) => A(q, r, o, 1), c, 8));
+    out.push(put((q, r) => S(q, r, o), 4, 6)); out.push(put((q, r) => D(q, r, o, 1), 1, 7)); out.push(put((q, r) => Rv(q, r, o, 0, o ? 2 : 4), 7, 7));
+  }
+  const [q1, r1] = off2ax(1, 4), [q2, r2] = off2ax(7, 4), [qs, rs] = off2ax(4, 4);
+  out.push(F(q1, r1), F(q2, r2), ST(qs, rs));
+  return out;
+};
+const boardCells = () => { const out = []; for (let row = 0; row < 9; row++) for (let col = 0; col < 9; col++) out.push(off2ax(col, row)); return out; };
+const nb = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
+const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) for (let s = 1; s <= n; s++) out.push([q + dq * s, r + dr * s]); return out; };
+
+const CARDS = [
+  { wide: true, title: 'The pieces', gallery: true,
+    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover, a drone, a shield and a Core. Pieces carry <b>fuel</b>, shown as little flames next to their feet (grey = empty). The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
+  { wide: true, title: 'The start position', board: true,
+    text: '<p>Blue moves first. The board has 9 &times; 9 hexes and every odd row is shifted half a hex to the right. Astronauts start with 1 fuel, drones are full, rovers start <b>empty</b> (their laser is off, grey point) and aim away from the board. The shields stand two rows in front of the Cores.</p>' },
+
+  { title: 'Astronaut: walking', draw: [{ pieces: [A(0, 0, 0, 1)], hl: nb(0, 0).map(c => [...c, COL.walk]), labels: [[0, 0, 'free', 38, 13]] }],
+    text: '<p>An astronaut can always step to any of the <b>6 neighbouring hexes</b>. One step is free and needs no fuel.</p>' },
+  { title: 'Astronaut: capturing', draw: [{ pieces: [A(0, 0, 0, 1), A(1, 0, 1, 2)], hl: [[1, 0, COL.capture]], arrows: [{ path: [[0, 0], [1, 0]] }] }],
+    text: '<p>Move onto an enemy and it is <b>captured</b>. If you capture an astronaut that still has fuel, you <b>steal 1 fuel</b> (up to 3). Pieces that stand under a <b>shield</b> cannot be captured.</p>' },
+  { title: 'Astronaut: the jetpack jump', draw: [{ w: 450, h: 390, radius: 3, pieces: [A(0, 0, 0, 2), A(1, 0, 1, 1)],
+        hl: [...ring(3)].filter(c => dist([0, 0], c) >= 1 && !(c[0] === 1 && c[1] === 0)).map(c => [...c, [COL.walk, COL.jump, COL.jump2][dist([0, 0], c) - 1]]),
+        arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[-1, 0, 'free', 0, 13], [-2, 0, '1 fuel', 0, 13], [-3, 0, '2 fuel', 0, 13]] }],
+    text: '<ul><li><b>Fuel is range:</b> an astronaut reaches every hex within <b>fuel + 1</b> steps (here fuel 2: up to 3 steps).</li><li>One step is free. A longer move costs <b>steps &minus; 1</b> fuel.</li><li>It <b>flies over everything</b> in the way (pieces, even shields) and may capture where it lands.</li><li>It can never land on a Core, only a single step onto it wins.</li></ul>' },
+  { title: 'The central fire cannot be crossed', draw: [{ w: 340, h: 290, radius: 2, pieces: [ST(0, 0), A(-1, 0, 0, 2)], hl: [[1, 0, COL.jump2]],
+        arrows: [{ path: [[-1, 0], [0, -1], [1, -1], [1, 0]], dashed: true, color: '#35d0ff' }], labels: [[1, 0, '3 steps', 38, 13]] }],
+    text: '<p>The fuel station cannot be entered, and jetpacks cannot fly over it either. The hex on the <b>far side</b> of the fire is therefore <b>3 steps</b> away, not 2: the jump has to go around, and costs 2 fuel.</p>' },
+  { title: 'Refuelling at the central fire', draw: [{ pieces: [ST(0, 0), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, '+1 fuel', 46, 13]] }],
+    text: '<p>An astronaut, rover or drone that stands <b>next to the central fire</b> refuels by being dragged <b>onto the fire</b>. It stays where it is and gets +1 fuel (astronaut: up to 3; rover and drone: up to 1). Refuelling uses your whole move.</p>' },
+  { title: 'Taking fuel from a vehicle', draw: [{ pieces: [A(0, 0, 0, 1), Rv(1, 0, 0, 1, 4)], hl: [[1, 0, COL.feed]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, 'rover is empty after', 46, 12]] }],
+    text: '<p>An astronaut next to one of its <b>own</b> rovers or drones can drag onto it and take its unit of fuel: the astronaut gets +1, the vehicle is empty. Nobody moves. For a rover this also switches its laser off.</p>' },
+  { title: 'Overcharge: use it or lose it', draw: [{ w: 400, h: 320, radius: 2, pieces: [A(0, 0, 0, 3, { hot: 1 })], hl: [[2, 0, COL.jump], [-2, 0, COL.jump], [0, 2, COL.jump], [0, -2, COL.jump]], arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[2, 0, 'jump: safe', 40, 12]] }],
+    text: '<p>An astronaut may hold the full <b>3 fuel for one move only</b>. If it is full and you do <b>not jump with it</b> (spend at least 1 fuel) on your next move, it <b>explodes</b>. A red pulsing ring and a ! warn you. Walking does not count, only a jump does.</p>' },
+  { title: 'Reaching the Core wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
+    text: '<p>Walk an astronaut <b>one step</b> onto the enemy Core and you win. A jump can never end on a Core. Rovers and drones cannot win.</p>' },
+  { title: 'One-time fuel fires', draw: [{ pieces: [F(1, 0), A(0, 0, 0, 0)], hl: [[1, 0, COL.refuel]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, '+1 fuel', 44, 13]] }],
+    text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), a rover or drone is filled. Flying or shooting over a fire does nothing.</p>' },
+
+  { title: 'Rover: moving', draw: [{ pieces: [Rv(0, 0, 0, 0, 4)], hl: nb(0, 0).map(c => [...c, COL.walk]) }],
+    text: '<p>A rover moves <b>exactly one hex</b> in any of the 6 directions (no jumping). It can capture by moving onto an enemy.</p>' },
+  { title: 'Rover: the laser', draw: [{ w: 450, h: 290, radius: 3, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [Rv(-3, 0, 0, 1, 0), A(0, 0, 1, 1), D(1, 0, 1)], beams: [[-3, 0, 0, 0]], hl: [[0, 0, COL.capture]], labels: [[-3, 0, 'armed', 40, 12]] }],
+    text: '<ul><li>A rover needs <b>fuel</b> to fire: it starts empty and must refuel first (grey point = off, red band = armed).</li><li>One shot destroys the <b>first astronaut, drone or rover</b> in line, on any distance, <b>including your own pieces</b>. Pieces behind it are safe.</li><li>The shot uses the fuel up.</li></ul>' },
+  { title: 'Laser controls', compass: true,
+    text: '<ul><li><b>Right-click</b> the rover: fire in the direction it points.</li><li><b>Right-drag</b> from the rover towards one of the six directions: turn the laser that way (works without fuel).</li><li>Turning and firing are <b>two separate moves</b>.</li></ul>' },
+  { title: 'What stops a laser', draw: [{ w: 450, h: 290, radius: 3, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [Rv(-3, 0, 0, 1, 0), A(1, 0, 1, 1), S(0, 0, 1)], beams: [[-3, 0, -0.55, 0]], labels: [[0, 0, 'blocked', 40, 12]] }],
+    text: '<p>The beam stops <b>harmlessly</b> at a <b>shield</b>, at the <b>central fire</b> and at a <b>Core</b>. It passes over the small one-time fires.</p>' },
+
+  { title: 'Drone: moving', draw: [{ w: 450, h: 390, radius: 3, pieces: [D(0, 0, 0, 1)], hl: lineCells(0, 0, 3).map(c => [...c, COL.walk]) }],
+    text: '<p>A drone moves <b>up to 3 hexes</b> in a straight line along any of the 6 directions. It cannot jump over pieces and cannot capture by moving.</p>' },
+  { wide: true, title: 'Drone: pushing', pair: [
+      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(-3, 0, 0, 1), A(0, 0, 1, 1)], hl: [[0, 0, COL.push]], arrows: [{ path: [[-3, 0], [0, 0]] }], labels: [[-1, 0, 'before', -40, 14]] },
+      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(0, 0, 0, 1), A(1, 0, 1, 1, { st: 1 })], hl: [[1, 0, COL.push]], labels: [[-1, 0, 'after', -40, 14]] }],
+    text: '<p>Drop the drone on an enemy within reach (a clear line, up to 3 hexes). The drone <b>glides up to it, pushes it one hex further</b> along the line and <b>takes its square</b>. The pushed piece is <b>stunned</b> (zzz) and cannot move on its next turn.</p>' },
+  { wide: true, title: 'Drone: pushing off the board or into a friend', pair: [
+      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1 && c[0] >= -1), pieces: [D(2, 0, 0, 1), A(-1, 0, 1, 1)], hl: [[-1, 0, COL.push]], arrows: [{ path: [[2, 0], [-1, 0]] }], booms: [[-2, 0]], labels: [[-2, 0, 'edge', -34, 12]] },
+      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(-3, 0, 0, 1), A(-0, 0, 1, 1), A(1, 0, 0, 1)], hl: [[0, 0, COL.push]], arrows: [{ path: [[-3, 0], [0, 0]] }], booms: [[0, 0]] }],
+    text: '<ul><li><b>Off the board:</b> if the square behind the target does not exist, the pushed piece is <b>captured</b>.</li><li><b>Into a friend:</b> if the square behind it holds one of <b>your own</b> pieces, the pushed piece is crushed and <b>captured</b>.</li><li>The push is <b>not possible</b> if behind the target is the central fire, a piece of the target\'s own side, a shield or a Core.</li></ul>' },
+
+  { title: 'Shield: moving and covering', draw: [{ pieces: [S(0, 0, 0)], hl: nb(0, 0).map(c => [...c, COL.cover]) }, { pieces: [A(0, 0, 0, 1), S(0, 0, 0)], labels: [[0, 0, 'covered', 44, 13]] }],
+    text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Core, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or laser) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
+  { title: 'Shield: breaking it', draw: [{ pieces: [A(0, 0, 0, 1), S(0, 0, 1, 0)], labels: [[0, 0, 'start', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 1)], labels: [[0, 0, 'cracked', 46, 13]] }],
+    text: '<p>A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield: after <b>one</b> of its turns the shield is <b>cracked</b> (more transparent, with cracks), after <b>two</b> it <b>shatters</b>. A shield that has moved away heals on the next turn.</p>' },
+
+  { wide: true, title: 'Turns, ending and helpers',
+    text: '<ul><li><b>Turn:</b> press <b>New game</b>. Blue moves first, then you alternate. Each turn is <b>one move of one piece</b>. The Core of the side to move pumps gently.</li><li><b>Win:</b> an astronaut steps onto the enemy Core.</li><li><b>Draw:</b> neither side has an astronaut left, the player to move cannot move, or the same position occurs three times.</li><li><b>Players menu:</b> human or AI for each colour, two humans, or two AIs. <b>Suggest move</b> shows what the AI would play. <b>Undo move</b> takes back up to 4 moves.</li></ul>' },
+];
+
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+const jobs = [];
+function build() {
+  const root = document.getElementById('cards');
+  for (const c of CARDS) {
+    const card = el('section', 'card' + (c.wide ? ' wide' : '')); card.appendChild(el('h2', '', c.title));
+    const pics = el('div', 'pics');
+    if (c.gallery) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => galleryDraw(cv)); }
+    else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.3, oy: 60, cells: boardCells(), pieces: startPieces() })); }
+    else if (c.compass) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => compassDraw(cv)); }
+    else for (const spec of c.pair || c.draw || []) { const fig = el('figure'); const cv = el('canvas'); fig.appendChild(cv); pics.appendChild(fig); jobs.push(() => diagram(cv, spec)); }
+    card.appendChild(pics); card.appendChild(el('div', '', c.text)); root.appendChild(card);
+  }
+}
+function galleryDraw(cv) {
+  const items = [
+    ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Rover', [Rv(0, 0, 0, 1, 1), Rv(0, 0, 1, 0, 2)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
+    ['Shield', [S(0, 0, 0), S(0, 0, 1)], 2], ['Core', [C(0, 0, 0), C(0, 0, 1)], 2], ['Fire', [F(0, 0), ST(0, 0)], 2]];
+  const cw = 126, w = cw * items.length + 20, h = 200, dpr = 2;
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';
+  g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);
+  items.forEach(([name, ps], i) => {
+    const x0 = 10 + i * cw * 1;
+    ps.forEach((p, k) => { const cx = x0 + 32 + k * 60, cy = 86; if (p.type === 'station') drawStation(cx, cy, PSC * 1.0, NOW); else drawPiece(p, cx, cy, PSC * 1.0, false, NOW); });
+    label(x0 + 62, 176, name, 15);
+  });
+}
+function compassDraw(cv) {
+  const w = 340, h = 290, dpr = 2; cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';
+  g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2 + 4;
+  for (const [q, r] of ring(2)) { const x = cx + HW * (q + r / 2), y = cy + 1.5 * HS * r; hexPath(x, y, HS - 1); g.fillStyle = TILE[(((q - r) % 3) + 3) % 3]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = '#173826'; g.stroke(); }
+  const names = ['E', 'NE', 'NW', 'W', 'SW', 'SE'];
+  DIRS.forEach(([dq, dr], i) => { const x = cx + HW * (dq * 1.55 + dr * 1.55 / 2), y = cy + 1.5 * HS * dr * 1.55; arrowLine([[cx + (x - cx) * .38, cy + (y - cy) * .38], [x, y]], { color: '#ff7b6b' }); label(cx + (x - cx) * 1.2, cy + (y - cy) * 1.2, names[i], 14); });
+  drawPiece(mk('rover', 0, 0, 0, { fuel: 1, dir: 1 }), cx, cy, PSC, false, NOW);
+}
+function renderAll() { jobs.forEach(j => j()); drawSpace(); }
+function drawSpace() {
+  const cv = document.getElementById('space'), w = cv.width = innerWidth, h = cv.height = innerHeight, k = cv.getContext('2d'), rnd = seeded(11);
+  if (!ART.bg.complete || !ART.bg.naturalWidth) return;
+  for (let i = 0; i < 40; i++) {
+    const r = R.deco[Math.floor(rnd() * R.deco.length)], big = r[2] > 100 || r[3] > 100, hh = (big ? 70 : 24) + rnd() * (big ? 70 : 30), ww = r[2] * hh / r[3], x = rnd() * w, y = rnd() * h;
+    k.save(); k.translate(x, y); k.rotate((rnd() - .5) * .8); k.globalAlpha = .85; k.drawImage(ART.bg, r[0], r[1], r[2], r[3], -ww / 2, -hh / 2, ww, hh); k.restore();
+  }
+}
+build(); renderAll();
+addEventListener('resize', drawSpace);
+</script>
+</body>
+</html>

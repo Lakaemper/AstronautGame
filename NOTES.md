@@ -157,3 +157,27 @@ and loading it in a browser. A freezing trick for animations: override `performa
 - A fuel-station art piece (the sun is the stand-in), a rover sprite in the original art (drawn in code now).
 - A deeper AI (it only searches a limited number of half-moves in its 10 s budget), a better defence against the opponent's laser aim.
 - A win/lose screen with the unused sprites from the art folder (banner, balloon, etc.).
+
+## Fuel fires (added 2026-10-21)
+
+Two one-time fuel fires lie in the middle row, at the second and second to last column (`add('fire', 2, ...)` in `newGame`; type `fire`,
+owner 2, a floor token: `at()` never returns it, so pieces walk, jump and shoot over it). A piece that LANDS on one (walk, capture, jump,
+or a drone's push glide) uses it up and is refuelled, only that piece: an astronaut +1 but never above `MAXFUEL - 1` (a fire cannot overcharge),
+a rover or drone is filled (`VEH_FUEL`). A first version refuelled every fuelable piece of the landing side; with it the AI always sent its
+drone (3 hexes per move) to a fire on its second move, and Blue won 39 of 47 decided AI-vs-AI games, so it was replaced. The permanent fuel
+station in the middle is drawn as a big fire of three flames (`drawStation`), the one-time fires as one small flame (`drawFire`). Flame shapes
+are picked at random every ~120 ms (`flick`), sizes and glow are constant (`FLAME_K` equalises the four shapes).
+
+## Rover artwork (2026-10-21)
+
+The rover is drawn in code in a paper-cut pencil style (`drawRover`, helpers `paper`, `wobblyPath`, `circlePts`): wobbly cut edges, a soft
+shadow under every paper layer, two directions of pencil hatching, heavy outline. Parts: six-spoke wheels with tread, team-coloured chassis
+with cream stripe, rivets, headlight and bumper, solar panel with cells, glossy cockpit dome, dish with a red tip. The laser is a separate
+barrel drawn in `drawPiece`, rotated to the aim: dark steel with a red band and a yellow lens when armed (fuel), grey when empty.
+
+## Tutorial page (2026-10-21)
+
+`TUTORIAL.html` (next to `index.html`, needs the `art` folder) shows every move with the game's own pieces: the drawing code (`drawPiece`, `drawRover`,
+`drawShield`, fires, sprite table `R`) is copied into it, so it must be regenerated when the game's art or rules change. The generator
+(`build_tutorial.py` + `tutorial_template.html`) was kept outside the repo. The main page has a "Tutorial" button that opens it; the old
+"How to play" box on the main page was removed (its text moved into the tutorial cards).

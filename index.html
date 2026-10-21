@@ -24,33 +24,13 @@
   button:hover { background:#ffe27f; } button:active { transform:translate(2px,3px); box-shadow:none; }
   #main { display:flex; flex-direction:column; gap:22px; flex:1 1 520px; min-width:0;       /* shrinks to leave room for the panel on the right */
           max-width:min(1100px, calc((100vh - 48px) * var(--ar, 1.17))); }   /* the whole playfield stays visible */
-  #rules { background:var(--paper); border:4px solid #111; border-radius:14px; padding:12px 20px 14px; box-shadow:5px 6px 0 #0007;
-         }
-  #rules h2 { margin:0 0 4px; font-size:21px; color:#e8590c; -webkit-text-stroke:1px #111; paint-order:stroke fill; text-shadow:1.5px 1.5px 0 #111; }
-  #rules ul { padding-left:20px; margin:6px 0 0; color:#33322e; font-size:14px; }
-  #rules li { margin-bottom:5px; }
-  .k { display:inline-block; width:11px; height:11px; border:1.5px solid #111; border-radius:3px; margin-right:6px; }
 </style>
 </head>
 <body>
 <canvas id="bgc"></canvas>
 <div id="main">
 <canvas id="c" width="900" height="900"></canvas>
-<div id="rules">
-  <h2>How to play</h2>
-  <ul>
-    <li>Drag a piece, release to land it. To refuel, drag a piece that stands next to the sun onto the sun (the fuel station) and release: it stays where it is.</li>
-    <li><span class="k" style="background:#3ddc84"></span>walk &nbsp;<span class="k" style="background:#35d0ff"></span>jump (steps &minus; 1 fuel) &nbsp;<span class="k" style="background:#ff4d5e"></span>capture &nbsp;<span class="k" style="background:#ffa733"></span>push &nbsp;<span class="k" style="background:#ffe14d"></span>refuel &nbsp;<span class="k" style="background:#ff9de2"></span>take fuel from a vehicle</li>
-    <li><b>Goal:</b> walk an astronaut onto the enemy <b>Core</b> (the planet on its baseline). Rovers and drones cannot win.</li>
-    <li><b>Turns:</b> press <b>New game</b> to start (nothing moves before that); Blue moves first, and every turn is one move of one piece. The Core of the side to move pumps gently. Every astronaut starts with 1 fuel, the maximum is 3, and each refuel adds 1. The <b>Players</b> menu chooses who plays Blue and Red (a human or the AI, two humans, or two AIs), <b>Suggest move</b> shows what the AI would play, and <b>Undo move</b> takes back up to 4 moves.</li>
-    <li><b>Draw:</b> neither side has an astronaut left, the player to move has no legal move, or the same position occurs three times.</li>
-    <li><b>Astronaut</b>: reaches every hex within <b>fuel + 1</b> steps (no fuel: the 6 neighbours; 3 fuel: up to 4 steps). One step is free; a longer move flies over everything except the sun and costs <b>steps &minus; 1</b> fuel (the sun cannot be crossed, even in the air: the hex on the far side of it is 3 steps away, not 2); it may capture where it lands, but never lands on a Core (only a single step onto the Core wins). Capturing an astronaut steals 1 fuel. <b>Overcharge:</b> an astronaut may hold the full 3 fuel for one move only. If it is full and does not jump (spend at least one fuel) on your next move, it explodes (a red pulsing ring and a ! warn you).</li>
-    <li><b>Shield</b> (glass dome, one per side, it starts two rows in front of your Core): moves one hex in any direction, also onto occupied hexes (yours or the enemy's), but never onto a Core. Your own pieces can move under your own shield too (one piece per shield). Whatever is under a shield is completely protected (no capture, push or laser) <b>and cannot move</b> until the shield moves away. A shield cannot be captured, pushed or landed on; lasers stop at it. A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield after <b>two</b> of its turns (it shows cracks and turns more transparent after the first); a shield that has moved away heals on the next turn.</li>
-    <li><b>Rover and drone</b> carry one unit of fuel (the drone starts with it, the rover starts empty; both refuel at the sun like astronauts: drag them onto the sun). An astronaut next to one of its own vehicles (any of the 6 neighbouring hexes) can drag onto it to take that unit: it only refuels, the astronaut stays where it is.</li>
-    <li><b>Rover</b>: one hex in any of the six directions, no jumping. It also has a <b>laser</b> that needs fuel: without fuel the laser is off (grey point, no beam). Both rovers start empty and aiming away from the board (Red up-left, Blue down-left), so nothing is in line at the start. With fuel a faint glow shows its aim, and <b>right-click</b> fires one shot in the facing direction, which uses the fuel up; <b>right-drag</b> toward one of the six directions turns the laser that way (it works without fuel). Turning is one move and firing is another. The fuel can alternatively feed a neighbouring astronaut. The beam destroys the first astronaut, drone or rover in line (either side, the shooter stays intact), so in a rover duel the first to shoot wins. It stops at the sun and Cores without harming them.</li>
-    <li><b>Drone</b>: up to 3 hexes along any of the six lines, no jumping; drop it on an enemy in range to push it one square away and take its square. A pushed piece is stunned for its next turn (zzz). Off the board, or into one of the drone's own pieces = captured.</li>
-  </ul>
-</div>
+
 </div>
 <div id="panel">
   <h1>ASTRO GAME</h1>
@@ -63,6 +43,7 @@
   <button id="reset">New game</button>
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
+  <button id="tutorial">Tutorial</button>
   <div id="aiinfo">AI search: no move computed yet.</div>
 </div>
 
@@ -88,10 +69,10 @@ const hexDist = (ax, ay, bx, by) => (Math.abs(ax - bx) + Math.abs(ay - by) + Mat
 
 // A shield sits on top of a hex: at() returns it instead of whatever stands under it, so everything under a shield is invisible
 // to captures, pushes and laser hits (fully protected), and covered() pieces get no moves of their own.
-const at = (x, y) => { let r; for (const p of pieces) if (p.x === x && p.y === y) { if (p.type === 'shield') return p; r = r || p; } return r; };
+const at = (x, y) => { let r; for (const p of pieces) if (p.x === x && p.y === y && p.type !== 'fire') { if (p.type === 'shield') return p; r = r || p; } return r; };   // fuel fires are floor tokens: they never count as a piece here
 const covered = p => p.type !== 'shield' && pieces.some(q => q.type === 'shield' && q.x === p.x && q.y === p.y);
 // an own shield with nothing under it can be entered by the owner's other pieces (they then stand under it)
-const freeShield = (t, o) => !!t && t.type === 'shield' && t.owner === o && !pieces.some(q => q !== t && q.x === t.x && q.y === t.y);
+const freeShield = (t, o) => !!t && t.type === 'shield' && t.owner === o && !pieces.some(q => q !== t && q.x === t.x && q.y === t.y && q.type !== 'fire');
 const inB = (x, y) => y >= 0 && y < ROWS && colOf(x, y) >= 0 && colOf(x, y) < COLS;
 const isStation = (x, y) => x === STATION.x && y === STATION.y;
 const nearStation = p => hexDist(p.x, p.y, STATION.x, STATION.y) === 1;
@@ -231,6 +212,16 @@ function step(p, m) {                              // mutates pieces/turn/winner
     if (m.kind === 'jump') { p.fuel -= m.cost; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
     if (under) text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} moves under its shield.`;
   }
+  // Fuel fires: the piece that lands on one uses it up and is refuelled, only that piece: an astronaut gets +1 (never more than
+  // MAXFUEL - 1, so a fire cannot overcharge it), a rover or drone is filled. A drone's glide onto a pushed enemy's hex counts as landing.
+  if ((m.kind === 'walk' || m.kind === 'capture' || m.kind === 'jump' || m.kind === 'push') && (p.type === 'astro' || p.type === 'rover' || p.type === 'drone')) {
+    const f = pieces.find(q => q.type === 'fire' && q.x === p.x && q.y === p.y);
+    if (f) {
+      pieces.splice(pieces.indexOf(f), 1);
+      if (p.type === 'astro') p.fuel = Math.max(p.fuel, Math.min(MAXFUEL - 1, p.fuel + 1)); else p.fuel = VEH_FUEL;
+      text += ` The fuel fire flares up: the ${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} is refuelled!`;
+    }
+  }
   // stun clears after the owner's next turn
   pieces.forEach(q => {
     if (q.owner !== turn) return;
@@ -244,7 +235,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
     else q.hot = q.fuel >= MAXFUEL ? 1 : 0;
   }
   for (const sh of pieces.slice()) if (sh.type === 'shield') {      // a shield on an enemy piece is worn down by that side's turns, a free shield heals
-    const c = pieces.find(q => q !== sh && q.x === sh.x && q.y === sh.y);
+    const c = pieces.find(q => q !== sh && q.x === sh.x && q.y === sh.y && q.type !== 'fire');
     if (c && c.owner !== sh.owner) {
       sh.hl = 0;
       if (c.owner === turn) {                                       // the covered piece's side has just used a turn without freeing it
@@ -282,6 +273,7 @@ const ZR = Int32Array.from({ length: 2 * 5 * XN * ROWS }, (_, i) => Math.imul(i 
 function hashState(s) {
   let h = s.turn ? 0x5bd1e995 : 0;
   for (const p of s.pieces) {
+    if (p.type === 'fire') { h ^= Math.imul(p.x * 31 + p.y + 7, 0x85ebca6b); continue; }   // fires only matter by position
     const attr = p.fuel + 4 * p.st + 8 * p.dir + 64 * p.dmg + 128 * p.hl + 256 * (p.hot || 0);
     h ^= Math.imul(ZR[((p.owner * 5 + TYPEI[p.type]) * ROWS + p.y) * XN + p.x], 2 * attr + 1);
   }
@@ -474,6 +466,8 @@ function newGame() {
     put('drone', 1, ROWS - 2);                    // rover and drone one row up
     put('rover', COLS - 2, ROWS - 2);
   });
+  add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
+  add('fire', 2, toX(COLS - 2, MIDC - 0), MIDC - 0);
   seen[posKey()] = 1;
   say(started ? 'Blue moves first.' : 'Press "New game" to start.');
   updateUI();
@@ -547,6 +541,10 @@ function animate(p, m, before, pos) {
   for (const q of before) {
     if (q === p) continue;
     const o = pos.get(q);
+    if (q.type === 'fire') {                                      // used up: keeps burning until the piece has landed, then goes out
+      if (!pieces.includes(q)) { ghosts.push({ p: q, o, until: now + tArr + 500 }); until = Math.max(until, tArr + 500); }
+      continue;
+    }
     if (pieces.includes(q)) {
       if (q.x !== o.x || q.y !== o.y) {          // pushed one square once the drone has arrived
         anims.set(q, { t0: now, segs: [{ d: tArr, from: o, to: o, a0: 0, a1: 0, side: 1 }, { d: 170, from: o, to: { x: q.x, y: q.y }, a0: 0, a1: 0, side: 1 }] });
@@ -651,6 +649,7 @@ cv.addEventListener('pointerup', e => {
 });
 cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
 document.getElementById('reset').onclick = () => { started = true; newGame(); draw(); };
+document.getElementById('tutorial').onclick = () => window.open('TUTORIAL.html', '_blank');   // the illustrated rules live on their own page
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
   if (!started) { say('Press "New game" to start.'); return; }
   if (thinking || winner !== null || aiTurn() || busy()) return;
@@ -691,6 +690,7 @@ loadArt('fire', 'AstroFire.png'); loadArt('expl', 'AstroExplosion.png'); loadArt
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
   front: [205, 0, 108, 160], wave: [514, 0, 116, 160],
+  flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]],   // the same four flames, cropped to their real length so that all of them can be drawn at the same height
   flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]],
   boom: [[14, 0, 299, 200], [324, 0, 184, 200], [520, 0, 179, 200], [709, 0, 146, 200], [875, 0, 87, 200], [967, 0, 18, 200]],
   sun: [2, 3, 115, 112], neptune: [217, 96, 73, 74], mars: [13, 114, 62, 62],
@@ -714,18 +714,65 @@ function crayon(path, color, lw = 3.5) {
   g.restore();
   g.beginPath(); path(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#111'; g.stroke();
 }
-function drawRover(cx, by, s, col) {                 // moon rover, drawn in the same style
-  g.save(); g.translate(cx, by); g.scale(s, s);
-  const rr = (x, y, w, h, r) => () => { g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); };
-  g.strokeStyle = '#111'; g.lineWidth = 3; g.beginPath(); g.moveTo(-18, -34); g.lineTo(-24, -58); g.stroke();   // antenna
-  crayon(() => g.arc(-24, -60, 7, 0, 7), '#d8d3c4', 2.5);
-  crayon(() => { g.arc(10, -34, 17, Math.PI, 0); g.closePath(); }, '#2fa8f0');                              // cockpit bubble
-  g.fillStyle = '#ffffffcc'; g.beginPath(); g.ellipse(4, -43, 4, 7, -.5, 0, 7); g.fill();
-  crayon(rr(-34, -36, 68, 24, 10), col);                                                                     // body
-  for (const wx of [-24, 0, 24]) {                                                                           // wheels
-    crayon(() => g.arc(wx, -10, 11, 0, 7), '#8d8d8d');
-    crayon(() => g.arc(wx, -10, 4, 0, 7), '#d9d9d9', 2);
+// ---- paper-cut pencil look for the rover: wobbly cut edges, a shadow under every paper layer, pencil hatching, heavy outline ----
+function wobblyPath(pts, seed, amp = 1.1) {          // closed shape through the points, edges a little uneven like hand-cut paper
+  const r = seeded(seed), P = pts.map(([x, y]) => [x + (r() - .5) * 2 * amp, y + (r() - .5) * 2 * amp]), n = P.length;
+  g.moveTo((P[0][0] + P[n - 1][0]) / 2, (P[0][1] + P[n - 1][1]) / 2);
+  for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; g.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+  g.closePath();
+}
+const circlePts = (x, y, r, n = 12) => Array.from({ length: n }, (_, i) => [x + Math.cos(i / n * 6.2832) * r, y + Math.sin(i / n * 6.2832) * r]);
+function paper(pathFn, color, { lw = 3, shade = .16, shadow = true } = {}) {
+  if (shadow) { g.save(); g.translate(2.2, 2.8); g.beginPath(); pathFn(); g.fillStyle = '#0000002e'; g.fill(); g.restore(); }   // this layer lies on the one below
+  g.save(); g.beginPath(); pathFn(); g.fillStyle = color; g.fill(); g.clip();
+  g.lineWidth = 1.1; g.strokeStyle = 'rgba(255,255,255,.3)';                                     // pencil strokes: light direction
+  for (let i = -100; i < 100; i += 5) { g.beginPath(); g.moveTo(i, 80); g.lineTo(i + 70, -10); g.stroke(); }
+  g.strokeStyle = `rgba(0,0,0,${shade})`;                                                        // a second, darker hatching direction
+  for (let i = -100; i < 100; i += 6) { g.beginPath(); g.moveTo(i, -80); g.lineTo(i + 60, 10); g.stroke(); }
+  g.restore();
+  g.beginPath(); pathFn(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#161616'; g.stroke();
+}
+function drawRover(cx, by, s, col) {                 // moon rover in paper-cut pencil style: wheels, chassis, solar panel, dome, dish
+  g.save(); g.translate(cx, by); g.scale(s * .92, s * .92);
+  const line = (x0, y0, x1, y1, w = 3) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineWidth = w; g.lineCap = 'round'; g.strokeStyle = '#161616'; g.stroke(); };
+  const cut = (pts, seed, color, o, amp) => paper(() => wobblyPath(pts, seed, amp), color, o);
+  // wheels with suspension arms
+  for (const [i, wx] of [-27, 0, 27].entries()) line(wx, -12, wx * .8, -25, 3.5);
+  for (const [i, wx] of [-27, 0, 27].entries()) {
+    cut(circlePts(wx, -12, 12.5, 14), 10 + i, '#454545', { lw: 3 }, .7);                          // tyre
+    g.save(); g.strokeStyle = '#ffffff55'; g.lineWidth = 1.2;                                     // tread
+    for (let k = 0; k < 14; k++) { const a = k / 14 * 6.2832; g.beginPath(); g.moveTo(wx + Math.cos(a) * 10.6, -12 + Math.sin(a) * 10.6); g.lineTo(wx + Math.cos(a) * 12, -12 + Math.sin(a) * 12); g.stroke(); }
+    g.restore();
+    cut(circlePts(wx, -12, 7.6, 10), 20 + i, '#b0b0b0', { lw: 2.2, shadow: false }, .5);          // rim
+    for (let k = 0; k < 5; k++) { const a = k / 5 * 6.2832 + i; line(wx + Math.cos(a) * 1.5, -12 + Math.sin(a) * 1.5, wx + Math.cos(a) * 7, -12 + Math.sin(a) * 7, 1.6); }
+    cut(circlePts(wx, -12, 2.8, 8), 30 + i, '#efe8d2', { lw: 1.8, shadow: false }, .3);          // hub
   }
+  // mast and solar panel behind the body
+  line(26, -43, 24, -61, 3);
+  line(-15, -43, -15, -52, 3);
+  cut([[-37, -53], [-6, -60], [-2, -53], [-33, -46]], 40, '#2d57b3', { lw: 2.6, shade: .22 }, .6);
+  g.save(); g.strokeStyle = '#a8c4ff'; g.lineWidth = 1.2;                                         // solar cells
+  const lerp = (a, b, t) => a + (b - a) * t;
+  for (const t of [.25, .5, .75]) { g.beginPath(); g.moveTo(lerp(-37, -6, t), lerp(-53, -60, t)); g.lineTo(lerp(-33, -2, t), lerp(-46, -53, t)); g.stroke(); }
+  g.beginPath(); g.moveTo(lerp(-37, -33, .5), lerp(-53, -46, .5)); g.lineTo(lerp(-6, -2, .5), lerp(-60, -53, .5)); g.stroke();
+  g.restore();
+  // chassis: team colour, darker skirt, cream stripe, hatch, rivets, headlight, bumper
+  cut([[-39, -27], [-37, -38], [-27, -43], [27, -43], [37, -37], [41, -28], [36, -21], [-34, -21]], 50, col, { lw: 3.4 }, .9);
+  cut([[-34, -21], [36, -21], [40, -27], [-38, -27]], 51, 'rgba(0,0,0,.2)', { lw: 1.8, shadow: false }, .4);
+  cut([[-34, -36], [29, -36], [33, -32], [-35, -32]], 52, '#f4ecd6', { lw: 2, shadow: false }, .5);
+  cut([[-24, -42], [-9, -42], [-9, -37], [-24, -37]], 53, 'rgba(255,255,255,.22)', { lw: 1.8, shadow: false }, .5);
+  for (const [rx, ry] of [[-34, -25], [-34, -39], [33, -25], [31, -40], [0, -25]]) { g.beginPath(); g.arc(rx, ry, 1.7, 0, 7); g.fillStyle = '#222'; g.fill(); }
+  cut([[40, -27], [49, -23], [48, -17], [38, -18]], 54, '#8f8f8f', { lw: 2.4 }, .5);
+  cut(circlePts(37.5, -32, 3.6, 8), 55, '#ffe27a', { lw: 1.8, shadow: false }, .3);
+  // cockpit dome (like the astronaut's visor) on a grey rim
+  cut([[-10, -43], [22, -43], [23, -39], [-11, -39]], 60, '#9a9a9a', { lw: 2.2 }, .5);
+  const dome = Array.from({ length: 9 }, (_, i) => [6 + Math.cos(Math.PI - i / 8 * Math.PI) * 15, -43 - Math.sin(Math.PI - i / 8 * Math.PI) * 16]);
+  cut(dome, 61, '#33aef2', { lw: 3 }, .5);
+  g.fillStyle = 'rgba(255,255,255,.88)'; g.beginPath(); g.ellipse(-.5, -52, 3.4, 6.2, -.5, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(12, -50, 1.8, 2.8, -.5, 0, 7); g.fill();
+  // dish on the mast
+  cut([[12, -66], [22, -73], [33, -68], [29, -60], [18, -61]], 70, '#e2dcc7', { lw: 2.4 }, .7);
+  line(23, -62, 28, -73, 2); g.beginPath(); g.arc(28.5, -74, 2.2, 0, 7); g.fillStyle = '#e8412e'; g.fill(); g.lineWidth = 1.4; g.strokeStyle = '#161616'; g.stroke();
   g.restore();
 }
 function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
@@ -871,7 +918,7 @@ const cxy = (q, r) => [ctrX(q, r), ctrY(r)];         // pixel centre of a (possi
 function drawField(now, vis) {
   g.save();
   g.drawImage(boardLayer, 0, 0);
-  sprite(ART.bg, R.sun, ctrX(STATION.x, STATION.y), ctrY(STATION.y) + 46 * PS, 92 * PS);   // the sun is the fuel station
+  drawStation(ctrX(STATION.x, STATION.y), ctrY(STATION.y), PS, now);                       // the big fire in the middle is the fuel station
 
   if (hint) {                        // suggested move: arrow + target outline
     const [x0, y0] = cxy(...hint.from), [x1, y1] = cxy(...hint.to);
@@ -924,9 +971,10 @@ function drawField(now, vis) {
     wobblePath(x0, y0, x1, y1, now, armed ? 2.5 : 4);
     g.strokeStyle = armed ? '#ff4d4d' : COLOR[p.owner] + '90'; g.lineWidth = armed ? 4 : 2.5; g.stroke();
   }
+  for (const p of pieces) if (p.type === 'fire') drawPiece(p, ...cxy(p.x, p.y), PS, false, now);   // the fires lie on the ground, under everything
   for (const pass of [0, 1]) for (const p of pieces) {   // pass 1 = animated pieces, drawn on top
     const v = vis.get(p);
-    if (!!v !== !!pass || p.type === 'shield') continue;
+    if (!!v !== !!pass || p.type === 'shield' || p.type === 'fire') continue;
     const [px, py] = cxy(v ? v.x : p.x, v ? v.y : p.y);
     drawPiece(p, px, py, PS, false, now, v);         // the real piece stays where it is while a copy is dragged
   }
@@ -1005,7 +1053,29 @@ function drawShield(p, cx, cy, s, vis) {            // glass dome seen from abov
   }
   g.restore();
 }
+// The sheet's flames hang down from a jetpack, so they are flipped here to burn upwards (base on the ground at baseY).
+const FLAME_K = [.78, .92, .95, 1];                 // the short, chubby first flame would look far bigger than the others at the same height: shrink it so all four have about the same area
+function flameUp(cx, baseY, f, h) { h *= FLAME_K[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }   // every frame gets the same height: only the shape flickers, not the size
+function fireGlow(cx, cy, r, a) {
+  const glow = g.createRadialGradient(cx, cy, 3, cx, cy, r);
+  glow.addColorStop(0, `rgba(255,195,70,${a})`); glow.addColorStop(1, 'rgba(255,120,20,0)');
+  g.fillStyle = glow; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+}
+// A flame shape is picked at random (not in a loop) every ~120 ms; each flame has its own rhythm. Sizes and the glow never change, so nothing pumps.
+const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
+function drawStation(cx, cy, s, now) {              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
+  s *= .8;
+  fireGlow(cx, cy, 78 * s, .4);
+  flameUp(cx - 27 * s, cy + 36 * s, flick(Math.floor(now / 130), 1), 60 * s);
+  flameUp(cx + 27 * s, cy + 36 * s, flick(Math.floor(now / 115), 2), 54 * s);
+  flameUp(cx, cy + 40 * s, flick(Math.floor(now / 100), 3), 96 * s);
+}
+function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one small flickering flame
+  fireGlow(cx, cy, 40 * s, .34);
+  flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
+}
 function drawPiece(p, cx, cy, s, lifted, now, vis) {
+  if (p.type === 'fire') { drawFire(p, cx, cy, s, now); return; }
   if (p.type === 'shield') { drawShield(p, cx, cy, s, vis); return; }
   const o = p.owner, by = cy + 36 * s;               // by = feet line
   const L = vis ? vis.lift : 0, sc = vis ? vis.scale : 1;   // L = height of a flight, sc = size
@@ -1036,8 +1106,13 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, o === 0 ? 61 : 143, 160], cx, by + 2 * s, 76 * s);
   } else if (p.type === 'rover') {
     drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
-    const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), ex = Math.cos(th), ey = Math.sin(th);   // laser emitter nub
-    crayon(() => g.arc(cx + ex * 36 * s, cy + 2 * s + ey * 30 * s, 8 * s, 0, 7), p.fuel > 0 ? '#ff3b3b' : '#8d8d8d', 2.5);   // grey point = no fuel, laser off
+    const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
+    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92);
+    paper(() => wobblyPath([[10, -4.2], [28, -4.6], [34, -3.2], [34, 3.2], [28, 4.6], [10, 4.2]], 80, .5), '#5d5d5d', { lw: 2.6, shade: .2 });                       // dark steel, so it stands out against a red or blue chassis
+    paper(() => wobblyPath([[22, -4.6], [28, -4.8], [28, 4.8], [22, 4.6]], 83, .3), armed ? '#e8412e' : '#a8a8a8', { lw: 2, shadow: false });   // red band = armed
+    paper(() => wobblyPath([[6, -6], [13, -6], [13, 6], [6, 6]], 81, .4), '#3a3a3a', { lw: 2.2, shadow: false });                    // collar
+    paper(() => wobblyPath(circlePts(35, 0, 3.6, 8), 82, .3), armed ? '#ffd24d' : '#c4c4c4', { lw: 2, shadow: false });             // lens
+    g.restore();
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
