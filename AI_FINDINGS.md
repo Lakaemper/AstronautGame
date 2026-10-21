@@ -96,3 +96,25 @@ In 12 games the AI never let an astronaut explode from overcharge; its rovers re
 
 First-move advantage: 50 AI-vs-AI games with identical settings (3 s per move, current rules): Blue (moves first) won 26, Red won 24,
 no draws (p = 0.89). No sign of a first-move advantage; a small one cannot be excluded with 50 games.
+
+## Rover double step on its first move (2026-10-21, AI-vs-AI, rule test)
+
+Question: the rover was hardly ever moved. Would an optional 2-hex first move (like a pawn) help? Implemented as `ROVER_DOUBLE` (see NOTES.md) and
+tested with the real engine inside 14 Web Workers in the browser (7 per rule), 0.7 s and 8 plies per move, current weights, 150-ply cap,
+both sides played by the same AI. 96 of 98 planned games finished (the last two were stopped). This compares the two RULE sets, it is not a strength test.
+
+| | old rule (49 games) | double step (47 games) |
+|---|---|---|
+| Blue wins / Red wins / draws | 14 / 35 / 0 | 22 / 22 / 3 |
+| average game length (plies) | 51 | 65 |
+| rover moves per game (both sides) | 1.29 | 4.19 |
+| games in which any rover moved | 23 of 49 | 42 of 47 |
+| double steps per game | 0 | 1.26 |
+| first rover move at ply (average, sides that moved it) | 41 | 30 |
+| a rover refuelled at a fire, per game | 0.06 | 0.34 |
+| laser shots per game | 0 | 0.02 |
+
+Reading: the double step triples the rover moves, the AI uses it, and the rover gets to a fire much more often. It still almost never shoots
+(0.02 per game), so it is used as a fuel carrier, not as a gun. The old rule gave Red 35 of 49 wins here, which does not agree with the 26:24 measured
+earlier at 3 s per move: the short 0.7 s search may favour one colour, so treat the colour split as a weak signal. A repeat at a longer time per
+move would be needed to confirm it.

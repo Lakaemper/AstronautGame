@@ -11,6 +11,10 @@ Art style: "Der Kleine Astronaut" crayon look. The sprites live in `art/` (sourc
 
 Page layout: the playfield column (`#main`: canvas + the "How to play" rules box underneath) is on the left, the control
 panel (`#panel`: status, players, buttons, AI info box) on the right; the column shrinks to fit next to the panel.
+The panel no longer shows a title or status text: `#turn` and `#msg` still exist but are `hidden` (the code writes to them, e.g. `say()`),
+so messages such as 'Illegal landing' or online errors are not visible. At its top is the blue/red position gauge (`#gauge`, `updateGauge()`
+called from `updateUI()`): the static `evaluate()` of the current position squashed with 1/(1+exp(-v/250)), the blue/red boundary itself moves with the score (no extra marker); label text 'Blue +1.2' =
+about 1.2 astronauts ahead (v/150).
 Open `index.html` in Chrome or Edge from the folder that contains `art/`. The art is loaded relatively,
 so without `art/` the game runs but the pieces and backgrounds are missing.
 
@@ -51,7 +55,9 @@ Pieces:
   astronaut (drag it onto the sun, it stays put). An astronaut (fuel < 3) in the 6 neighbouring hexes of an own rover/drone with
   fuel can play move kind `feed` (target = the vehicle's square): astronaut +1 fuel, vehicle -1, nobody moves. A vehicle's
   fuel is only used for feeding, never for moving. Drawn as one flame beside the vehicle.
-- **Rover:** moves exactly one hex in one of the six directions (it used to move 1 or 2), no jumping, captures by moving onto an enemy (not a Core). Has a
+- **Rover:** moves one hex in one of the six directions, but a rover that has never moved may take TWO hexes along a line on its
+  first move (like a chess pawn: `fresh` flag, switch `ROVER_DOUBLE` in the engine block; the double step is a plain move: the first hex
+  must be free, no capture, no moving under a shield, the sun blocks it; the flag is lost with the first change of position). No jumping, captures by moving onto an enemy (not a Core). Has a
   **laser that needs fuel**: the rover starts EMPTY (fuel 0), so at the start both lasers are off (grey emitter point, no beam).
   It refuels at the sun like any piece (drag it onto the sun while next to it). With fuel (1 unit, `VEH_FUEL`) the faint
   wobbling glow shows its aim; a shot (right-click) destroys the first astronaut, drone or rover (either side, including own) in
