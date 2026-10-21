@@ -118,3 +118,29 @@ Reading: the double step triples the rover moves, the AI uses it, and the rover 
 (0.02 per game), so it is used as a fuel carrier, not as a gun. The old rule gave Red 35 of 49 wins here, which does not agree with the 26:24 measured
 earlier at 3 s per move: the short 0.7 s search may favour one colour, so treat the colour split as a weak signal. A repeat at a longer time per
 move would be needed to confirm it.
+
+## Rover with 2 fuel, laser breaks shields, turn + shoot in one move (2026-10-21, rule test)
+
+Changes: a rover carries up to 2 fuel (`ROVER_FUEL`, each shot costs 1), a laser hit damages a shield (2 hits shatter it; a hit shield
+heals only one move later than usual), and turning and shooting is ONE move (`legal()` no longer generates `aim`). Same method as the
+double-step test above (14 workers x 7 games planned, 0.7 s and 8 plies per move, current weights, both sides the same AI; 93 games finished,
+the rest were stopped). Compared with the double-step-only version (47 games):
+
+| | double step only | + 2 fuel, shield damage, turn+shoot |
+|---|---|---|
+| Blue wins / Red wins / draws | 22 / 22 / 3 | 45 / 36 / 12 |
+| average game length (plies) | 65 | 63 |
+| rover moves per game (both sides) | 4.19 | 6.89 |
+| laser shots per game | 0.02 | 1.01 |
+| games with at least one shot | 1 of 47 (approx.) | 63 of 93 |
+| rover refuelled at a fire, per game | 0.34 | 0.97 |
+| shield hits / shatters per game | not possible | 0 / 0 |
+| average ply of the first shot | - | 17 |
+
+Reading: the rover now takes part: it moves more, refuels at the fires about once per game and shoots about once per game, which was almost
+never the case before. The shield damage is NOT used at all by the AI (0 hits in 93 games): the evaluation values a shield at 40 (minus 15 per
+damage point), so two shots (two tempi) never pay off, and nothing in the evaluation values what a shield protects. Draws went up (12 of 93,
+13%, against 6%), probably repetition draws; not investigated. First-shot and colour effects are within the noise of this sample size.
+
+Ideas: give the evaluation a term for pieces under an enemy or own shield (protected = worth more), then shield shots may start to appear; look
+at the draws (which rule produces repetition?).

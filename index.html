@@ -63,7 +63,7 @@
 <script id="engine">
 // Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
 let ROVER_DOUBLE = true;                       // a rover that has never moved may step two hexes along a line (like a pawn); set false for the old rule
-const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1;
+const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1, ROVER_FUEL = 2;   // a drone carries 1 unit, a rover 2 (one per laser shot)
 // The board is a rectangle of COLS x ROWS pointy-top hexes; every odd row is shifted right by half a hex. Positions are stored
 // in axial coordinates (x = q + AXS, y = row) so that all six directions are the same constant steps everywhere:
 // x = column - floor(row / 2) + AXS. AXS keeps x >= 0 (needed for the lookup tables).
@@ -79,6 +79,7 @@ const CORE = [{ x: toX(MIDC, ROWS - 1), y: ROWS - 1 }, { x: toX(MIDC, 0), y: 0 }
 const fixed = t => t.type === 'core' || t.type === 'shield';   // cannot be captured, pushed or landed on
 // Hex directions in axial coordinates (pointy-top hexes).
 const HEX6 = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];   // neighbours: E, NE, NW, W, SW, SE (screen angle = -60 deg * index)
+const fuelCap = p => p.type === 'astro' ? MAXFUEL : p.type === 'rover' ? ROVER_FUEL : VEH_FUEL;   // largest tank of a piece
 const hexDist = (ax, ay, bx, by) => (Math.abs(ax - bx) + Math.abs(ay - by) + Math.abs(ax + ay - bx - by)) / 2;
 
 // A shield sits on top of a hex: at() returns it instead of whatever stands under it, so everything under a shield is invisible
@@ -109,6 +110,7 @@ function beamTrace(p, dx, dy) {                    // where a laser shot from ro
     const t = at(x, y);
     if (!t) continue;
     if (t.type === 'drone' || t.type === 'astro' || t.type === 'rover') return { ex: x, ey: y, victim: t };
+    if (t.type === 'shield') return { ...stop, shield: t };   // a shield stops the beam and is damaged by it
     return stop;                                     // a Core
   }
 }
@@ -118,7 +120,7 @@ function legal(p) {
   if (p.st > 0 || covered(p)) return out;            // stunned by a drone push, or frozen under a shield (the shield has to move first)
   const A = (x, y) => at(x, y);
   const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
-  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < VEH_FUEL && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // vehicles refuel at the sun too (drag them onto the sun; they stay put)
+  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < fuelCap(p) && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // vehicles refuel at the sun too (drag them onto the sun; they stay put)
   if (p.type === 'shield') {                                           // one step to any neighbour, also onto occupied hexes (it then covers whatever stands there)
     for (const [dx, dy] of HEX6) {
       const x = p.x + dx, y = p.y + dy;
@@ -157,9 +159,10 @@ function legal(p) {
         break;
       }
     }
-    if (p.fuel > 0) HEX6.forEach(([dx, dy], i) => {  // the laser needs fuel. A shot that hits something goes in the current facing; turning toward a target is a move of its own
-      const v = beamTrace(p, dx, dy).victim;
-      if (v) push(v.x, v.y, i === p.dir ? 'laser' : 'aim', { dx, dy });
+    if (p.fuel > 0) HEX6.forEach(([dx, dy]) => {     // the laser needs fuel. Turning and shooting is ONE move: the rover turns towards the target and fires
+      const tr = beamTrace(p, dx, dy);
+      if (tr.victim) push(tr.victim.x, tr.victim.y, 'laser', { dx, dy });
+      else if (tr.shield && tr.shield.owner !== o) push(tr.shield.x, tr.shield.y, 'laser', { dx, dy });   // shooting at an enemy shield damages it
     });
   } else if (p.type === 'drone') {
     for (const [dx, dy] of HEX6) {
@@ -187,7 +190,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
   let text = '';
   const A = (x, y) => at(x, y);
   if (m.kind === 'refuel') {
-    p.fuel++; text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} refuels (${p.fuel}/${p.type === 'astro' ? MAXFUEL : VEH_FUEL}).`;
+    p.fuel++; text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} refuels (${p.fuel}/${fuelCap(p)}).`;
   } else if (m.kind === 'feed') {                   // the astronaut takes the vehicle's fuel pack; nobody moves
     const v = A(m.x, m.y); v.fuel--; p.fuel++;
     text = `${NAME[p.owner]} astronaut refuels from the ${v.type} (${p.fuel}/${MAXFUEL}).`;
@@ -197,8 +200,13 @@ function step(p, m) {                              // mutates pieces/turn/winner
   } else if (m.kind === 'laser') {
     p.dir = HEX6.findIndex(([a, b]) => a === m.dx && b === m.dy);
     const tr = beamTrace(p, m.dx, m.dy), v = tr.victim;
-    p.fuel = Math.max(0, p.fuel - 1);                // the fuel is enough for a single shot
-    if (v) {                                         // the target is destroyed (a rover too, own pieces included); the shooter stays intact
+    p.fuel = Math.max(0, p.fuel - 1);                // one unit of fuel per shot
+    if (tr.shield) {                                 // a shield hit: it takes 1 damage (2 break it); it heals only after it has not been hit for one more move
+      const sh = tr.shield; sh.dmg++; sh.hl = -1;
+      if (sh.dmg >= 2) { pieces.splice(pieces.indexOf(sh), 1); text = `${NAME[p.owner]} rover shatters ${sh.owner === p.owner ? 'its own' : 'an enemy'} shield!`; }
+      else text = `${NAME[p.owner]} rover cracks ${sh.owner === p.owner ? 'its own' : 'an enemy'} shield.`;
+    }
+    else if (v) {                                         // the target is destroyed (a rover too, own pieces included); the shooter stays intact
       pieces.splice(pieces.indexOf(v), 1);
       text = `${NAME[p.owner]} rover lasers ${v.owner === p.owner ? 'its own' : 'an enemy'} ${v.type === 'astro' ? 'astronaut' : v.type}!`;
     }
@@ -233,7 +241,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
     const f = pieces.find(q => q.type === 'fire' && q.x === p.x && q.y === p.y);
     if (f) {
       pieces.splice(pieces.indexOf(f), 1);
-      if (p.type === 'astro') p.fuel = Math.max(p.fuel, Math.min(MAXFUEL - 1, p.fuel + 1)); else p.fuel = VEH_FUEL;
+      if (p.type === 'astro') p.fuel = Math.max(p.fuel, Math.min(MAXFUEL - 1, p.fuel + 1)); else p.fuel = fuelCap(p);
       text += ` The fuel fire flares up: the ${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} is refuelled!`;
     }
   }
@@ -257,7 +265,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
         if (++sh.dmg >= 2) { pieces.splice(pieces.indexOf(sh), 1); text += ' The shield shatters!'; }
         else text += ' The shield cracks!';
       }
-    } else if (sh.dmg > 0) { if (sh.hl) { sh.dmg = 0; sh.hl = 0; } else sh.hl = 1; }   // moved away or never on an enemy: heals on the next move
+    } else if (sh.dmg > 0) { if (++sh.hl > 1) { sh.dmg = 0; sh.hl = 0; } }   // moved away or never on an enemy: heals on the next move (a laser hit sets hl = -1, so one move later)
   }
   if (winner !== null) text = `${NAME[winner]} reached the Core and wins!`;
   else {
@@ -278,7 +286,7 @@ function inState(s, fn) {                          // run engine code (legal/ste
 }
 // Move ordering (the better the order, the more alpha-beta cuts): captures first, most valuable victim first, own pieces
 // last; then moves that caused a cutoff before (killer moves per ply, history table per piece type / from / to square).
-const TYPEI = { astro: 0, rover: 1, drone: 2, core: 3, shield: 4 }, VICTIM = { astro: 100, rover: 85, drone: 40, core: 100000 };
+const TYPEI = { astro: 0, rover: 1, drone: 2, core: 3, shield: 4 }, VICTIM = { astro: 100, rover: 85, drone: 40, shield: 30, core: 100000 };
 let hist = new Int32Array(2 * 5 * XN * ROWS * XN * ROWS), killers = [];
 const hkey = (p, m) => (((p.owner * 5 + TYPEI[p.type]) * XN * ROWS) + p.y * XN + p.x) * XN * ROWS + m.y * XN + m.x;
 // Transposition table used for ordering only: remembers the best move found in a position (hash -> move key), so each
@@ -334,7 +342,7 @@ function evaluate(s) {                             // positive = good for Blue
         - (p.hot ? EV.hot : 0);                          // fully charged for a move already: it has to jump next time or it explodes
     } else if (p.type === 'rover') x = EV.rover + (p.fuel > 0 ? EV.armed : 0) + (nearStation(p) ? 10 : 0) + (p.fuel === 0 && nearStation(p) ? EV.rsun : 0);   // an armed rover (fuel for one laser shot) is worth much more
     else if (p.type === 'drone') x = 40;
-    else if (p.type === 'shield') x = 40;
+    else if (p.type === 'shield') x = 40 - 15 * (p.dmg || 0);   // a cracked shield is worth less
     if (p.type === 'rover' || p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
     v += p.owner === 0 ? x : -x;
   }
@@ -669,8 +677,9 @@ cv.addEventListener('pointerup', e => {
       if (p.fuel < 1) { say('The laser has no fuel. Move the rover next to the sun and drag it onto the sun to refuel it.'); draw(); return; }
       const [dx, dy] = HEX6[p.dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y });
     }
-    else if (dir === p.dir) say('The laser already points that way. Right-click the rover to fire.');
-    else { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'aim', dx, dy, x: p.x, y: p.y }); }
+    else if (p.fuel >= 1) { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y }); }   // turn towards the dragged direction and fire, in one move
+    else if (dir === p.dir) say('The laser already points that way (and has no fuel to fire).');
+    else { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'aim', dx, dy, x: p.x, y: p.y }); }   // an empty rover can only turn
     draw(); return;
   }
   if (!drag) return;
@@ -1166,7 +1175,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('!', cx + 26 * s, cy - 38 * s); g.fillStyle = '#e01010'; g.fillText('!', cx + 26 * s, cy - 38 * s);
   }
   if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
-    const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
+    const slots = fuelCap(p);
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
       sprite(ART.fire, R.flame[0], cx + (slots === 1 ? 36 : [-33, 33, 0][i]) * s, by + (i < 2 ? 10 : 14) * s, 24 * s);
