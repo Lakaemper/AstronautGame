@@ -181,3 +181,30 @@ barrel drawn in `drawPiece`, rotated to the aim: dark steel with a red band and 
 `drawShield`, fires, sprite table `R`) is copied into it, so it must be regenerated when the game's art or rules change. The generator
 (`build_tutorial.py` + `tutorial_template.html`) was kept outside the repo. The main page has a "Tutorial" button that opens it; the old
 "How to play" box on the main page was removed (its text moved into the tutorial cards).
+
+## 3D models for printing (2026-10-21)
+
+`models/make_models.py` (pure Python, no libraries) builds printable STL files of three pieces from simple solids (spheres, lathe solids, prisms):
+`astronaut` (about 41 mm tall), `rover` (shrunk to 70% so it fits the base; laser barrel points forward) and `drone_red_ship` (a rocket ship with
+swept wings and two engine pods, 34.5 mm tall). Every piece stands on a flat round base of 1 inch (25.4 mm) across and 4 mm thick (the usual tabletop
+miniature base: 25 mm for Medium and Small creatures, and 3D-printed bases are most often about 4 mm thick). Curves use 64 segments (`SEG`).
+Run `python make_models.py [scale]` to regenerate the STL files and `preview.html` (an offline viewer: drag to rotate, wheel to zoom).
+Each STL is a union of closed overlapping solids (slicers merge them). Earlier versions also had the Blue rocket drone, the shield dome, the two
+Cores and the two fires (24 mm bases); they were dropped on request and can be rebuilt from the git history.
+
+## Online play for two humans (2026-10-21)
+
+Two friends can play over the net. `serve.py` (standard library only; it replaces the plain static server on Lightsail) relays moves:
+`POST /api/new` creates a room (the creator gets a random colour), `POST /api/join` gives the friend the other colour (later visitors only
+watch), `POST /api/move {room, token, i, sig}` appends a move (checked: it must be that colour's turn and index `i` must be the next one; Blue
+moves first and the turns alternate), and `GET /api/events` is a Server-Sent-Events stream that replays the old moves ('ready' marks the end of
+the backlog) and then delivers new ones live, with 'presence' events for the two players. Rooms live in `rooms.json` (ignored by git), so a server
+restart keeps games running; rooms older than 14 days are dropped. The server listens on IPv4 and IPv6.
+
+In the page everything funnels through `apply()`: it computes the move signature (`msig`, independent of piece numbers) before the step, sends our own
+moves with `postMove`, and skips animations while the backlog replays (`replaying`). A friend's move comes back through `resolveSig`, which finds the
+piece and the move (a laser aimed at nothing is parsed from the signature because `legal()` does not generate it), and is applied with the normal
+animation. The seat key lives in the address hash (`?room=ID#k=TOKEN`), so reloading or reopening that address returns to the same seat; the link to
+send is `?room=ID` without the key. Online games have no undo, no suggestions and no AI (the players menu is locked). The "New game" button
+leaves the online game after a confirmation. Tests used: a Python script that drives the server (turn order, seats, SSE, reconnect with Last-Event-ID,
+restart persistence) and two browser tabs on this PC. Note: with plain `http.server` a browser may try `::1` first; `serve.py` now listens on both.

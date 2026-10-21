@@ -21,6 +21,8 @@
   #aiinfo { white-space:pre-line; margin-top:10px; padding:6px 10px; min-height:4.8em; background:#fffbea; border:2px solid #111; border-radius:8px; font:12px/1.4 Consolas,monospace; color:var(--dim); }
   button { background:#ffd24d; color:var(--ink); border:3px solid #111; border-radius:10px; padding:6px 12px; font:inherit; font-weight:700;
            cursor:pointer; margin:8px 4px 0 0; box-shadow:2px 3px 0 #111; }
+  #onlineinfo { display:none; margin-top:10px; background:#fff8e6; border:3px solid #111; border-radius:10px; padding:8px 10px; font-size:14px; }
+  #onlineinfo input { width:100%; margin:6px 0 2px; font:inherit; font-size:13px; padding:3px 6px; border:2px solid #111; border-radius:6px; }
   button:hover { background:#ffe27f; } button:active { transform:translate(2px,3px); box-shadow:none; }
   #main { display:flex; flex-direction:column; gap:22px; flex:1 1 520px; min-width:0;       /* shrinks to leave room for the panel on the right */
           max-width:min(1100px, calc((100vh - 48px) * var(--ar, 1.17))); }   /* the whole playfield stays visible */
@@ -44,6 +46,8 @@
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
   <button id="tutorial">Tutorial</button>
+  <button id="online">Online game</button>
+  <div id="onlineinfo"></div>
   <div id="aiinfo">AI search: no move computed yet.</div>
 </div>
 
@@ -565,18 +569,20 @@ function animate(p, m, before, pos) {
 }
 
 function apply(p, m, who) {
+  const sig = msig(p, m);                          // identifies the move for the other player in an online game
   if (pond) { ponderHit = pond.table.get(msig(p, m)) || null; killWorker(); pond = null; }   // a human move: keep the prepared answer, stop pondering
   history.push({ pieces: pieces.map(q => ({ ...q })), turn, winner, lastMove, msg, seen: { ...seen } });   // undo point before every move, last 4 kept
   if (history.length > UNDO_DEPTH) history.shift();
   hint = null;
   lastMove = m.kind === 'refuel' ? [{ x: p.x, y: p.y }] : [{ x: p.x, y: p.y }, { x: m.x, y: m.y }];   // refuelling: the piece does not move
-  if (m.kind === 'laser') {
+  if (m.kind === 'laser' && !replaying) {
     const tr = beamTrace(p, m.dx, m.dy);
     fx.push({ type: 'beam', dx: m.dx, dy: m.dy, x0: p.x, y0: p.y, x1: tr.ex, y1: tr.ey, owner: p.owner, t0: performance.now() });
   }
   const before = pieces.slice(), pos = new Map(before.map(q => [q, { x: q.x, y: q.y }]));
   const text = step(p, m);
-  animate(p, m, before, pos);
+  if (!replaying) animate(p, m, before, pos);
+  if (online) { const i = online.applied++; if (!remoteMove) postMove(i, sig); }   // our own move goes to the server (the echo is ignored later)
   say((who ? who + ': ' : '') + text + drawCheck());
   updateUI();
   maybeAI();
@@ -584,7 +590,7 @@ function apply(p, m, who) {
 
 function updateUI() {
   const el = document.getElementById('turn');
-  el.textContent = !started ? 'Press "New game"' : winner === DRAW ? 'Draw!' : winner !== null ? `${NAME[winner]} wins!` : `${NAME[turn]} to move` + (thinking ? ' (thinking…)' : '');
+  el.textContent = !started ? 'Press "New game"' : winner === DRAW ? 'Draw!' : winner !== null ? `${NAME[winner]} wins!` : `${NAME[turn]} to move` + (online && online.color === turn ? ' (your move)' : '') + (thinking ? ' (thinking…)' : '');
   el.style.color = !started ? '#5b5a55' : COLOR[winner !== null ? winner : turn];
 }
 
@@ -601,6 +607,7 @@ function cellOf(e) {                                // which hex is under the po
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
   if (!started) { say('Press "New game" to start.'); return; }
+  if (online && online.color !== turn && winner === null) { say(online.color === 2 ? 'You are watching this game.' : "It is your friend's turn."); return; }
   if (winner !== null || thinking || aiTurn() || busy()) return;
   const c = cellOf(e), p = inB(c.x, c.y) && at(c.x, c.y);
   if (!p || p.owner !== turn || p.type === 'core') return;
@@ -648,7 +655,7 @@ cv.addEventListener('pointerup', e => {
   draw();
 });
 cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
-document.getElementById('reset').onclick = () => { started = true; newGame(); draw(); };
+document.getElementById('reset').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = true; newGame(); draw(); };
 document.getElementById('tutorial').onclick = () => window.open('TUTORIAL.html', '_blank');   // the illustrated rules live on their own page
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
   if (!started) { say('Press "New game" to start.'); return; }
@@ -1229,7 +1236,78 @@ function maybeAI() {
   });
 }
 
+// ---------- online game: two humans over the net. The server (serve.py) only relays moves; both browsers run the same rules ----------
+let online = null, replaying = false, remoteMove = false;     // online = { room, token, color 0 Blue / 1 Red / 2 watcher, applied, present, live, hadFriend, es }
+const onlineInfo = document.getElementById('onlineinfo');
+async function api(path, body, tries = 3) {
+  let r;
+  for (let k = 0; ; k++) {                                         // a flaky connection: try again a couple of times before giving up
+    try { r = await fetch('api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); break; }
+    catch (e) { if (k + 1 >= tries) throw e; await new Promise(res => setTimeout(res, 700)); }
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || r.status), { status: r.status });
+  return j;
+}
+function postMove(i, sig) {
+  api('move', { room: online.room, token: online.token, i, sig }).catch(e => {
+    if (e.status === 409) { say('Out of sync with your friend: reloading…'); setTimeout(() => location.reload(), 900); } else say('Could not send the move: ' + e.message);
+  });
+}
+function resolveSig(sig) {                                        // find the piece and the move that a signature describes
+  for (const p of pieces) if (p.owner === turn) for (const mv of legal(p)) if (msig(p, mv) === sig) return [p, mv];
+  const m = /^(-?\d+),(-?\d+)>(laser|aim)(-?\d+),(-?\d+)$/.exec(sig);        // a laser aimed or fired at nothing is not in legal()
+  const p = m && at(+m[1], +m[2]);
+  return p && p.type === 'rover' && p.owner === turn ? [p, { kind: m[3], dx: +m[4], dy: +m[5], x: p.x, y: p.y }] : null;
+}
+function renderOnline() {
+  if (!online) { onlineInfo.style.display = 'none'; return; }
+  const me = online.color, other = 1 - me, link = location.origin + location.pathname + '?room=' + online.room;
+  let html = me === 2 ? 'Online: you are watching this game.' : `Online game: you play <b style="color:${COLOR[me]}">${NAME[me]}</b>.`;
+  if (!online.live) html += ' Loading the game…';
+  else if (me < 2 && online.present[other]) html += ' Your friend is connected.';
+  else if (me < 2 && online.hadFriend) html += ' Your friend is not connected right now (they can open the link again).';
+  else if (me < 2) html += ` Waiting for your friend. Send this link:<input readonly value="${link}" onclick="this.select()"><button id="copylink">Copy link</button>`;
+  onlineInfo.innerHTML = html; onlineInfo.style.display = 'block';
+  const cb = document.getElementById('copylink');
+  if (cb) cb.onclick = () => navigator.clipboard.writeText(link).then(() => say('Link copied.'), () => { cb.previousElementSibling.select(); });
+}
+function connectOnline() {
+  const es = online.es = new EventSource('api/events?room=' + online.room + '&token=' + online.token);   // reconnects by itself and then only gets newer moves
+  es.addEventListener('move', ev => {
+    const d = JSON.parse(ev.data);
+    if (d.i < online.applied) return;                             // our own move coming back
+    if (d.i > online.applied) { location.reload(); return; }
+    const r = resolveSig(d.sig);
+    if (!r) { say('Out of sync with your friend: reloading…'); setTimeout(() => location.reload(), 900); return; }
+    remoteMove = true; try { apply(r[0], r[1], ''); } finally { remoteMove = false; }
+  });
+  es.addEventListener('ready', () => { replaying = false; online.live = true; renderOnline(); draw(); if (online.wasDown) { online.wasDown = false; say('Connected again.'); } });   // the old moves are through: moves are live from here
+  es.addEventListener('presence', ev => { online.present = JSON.parse(ev.data).present; if (online.present[1 - online.color]) online.hadFriend = true; renderOnline(); });
+  es.onerror = () => { if (online) { online.wasDown = true; say('Connection lost, trying again…'); } };
+}
+function leaveOnline() {
+  if (online && online.es) online.es.close();
+  online = null; replaying = false; remoteMove = false;
+  roleSel.disabled = false; for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = '';
+  window.history.replaceState(null, '', location.pathname); renderOnline();
+}
+async function enterOnline(room, token, color) {
+  leaveOnline();
+  online = { room, token, color, applied: 0, present: [false, false], live: false, hadFriend: false, es: null };
+  window.history.replaceState(null, '', '?room=' + room + '#k=' + token);      // reload-safe; the secret stays in the hash and is never sent
+  roleSel.value = 'two'; roleSel.disabled = true; started = true;
+  for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = 'none';
+  replaying = true; newGame(); renderOnline(); connectOnline();
+}
+document.getElementById('online').onclick = async () => {
+  if (online && !confirm('Leave this online game and open a new one?')) return;
+  try { const r = await api('new', {}); await enterOnline(r.room, r.token, r.color); } catch (e) { say('Could not start an online game: ' + e.message); }
+};
+
 newGame(); draw();
+{ const room = new URLSearchParams(location.search).get('room'), key = (location.hash.match(/k=([\w-]+)/) || [])[1];   // opened an invitation link
+  if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color)).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
 if (typeof window !== 'undefined') setInterval(() => { if (!looping && pieces) draw(); }, 50);
 </script>
 </body>

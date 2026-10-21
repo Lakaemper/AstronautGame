@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Astro Game: 3D models</title>
+<style>
+  body { margin:0; background:#0b1230; color:#1a1a1a; font:15px/1.45 "Comic Sans MS","Chalkboard SE","Comic Neue",cursive,sans-serif; padding:18px; }
+  .wrap { max-width:1100px; margin:0 auto; display:grid; grid-template-columns: 220px 1fr; gap:18px; }
+  .panel, .stage { background:#f6efdc; border:4px solid #111; border-radius:14px; box-shadow:5px 6px 0 #0007; padding:12px 14px; }
+  h1 { margin:0 0 6px; font-size:26px; color:#e8590c; -webkit-text-stroke:1.2px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
+  button { display:block; width:100%; text-align:left; margin:6px 0; padding:6px 10px; border:3px solid #111; border-radius:10px; background:#ffd24d; font:inherit; font-weight:700; cursor:pointer; box-shadow:2px 3px 0 #111; }
+  button.on { background:#8be0a4; }
+  canvas { width:100%; max-width:760px; aspect-ratio:1; display:block; margin:0 auto; background:radial-gradient(circle at 50% 40%, #35604a, #1a3a2a); border:3px solid #111; border-radius:10px; touch-action:none; cursor:grab; }
+  #info { margin-top:8px; color:#5b5a55; }
+  .hint { font-size:13px; color:#5b5a55; margin-top:10px; }
+  @media (max-width:760px) { .wrap { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel"><h1>3D models</h1><div id="list"></div><div class="hint">Drag to rotate, mouse wheel to zoom. The STL files next to this page are what you print.</div></div>
+  <div class="stage"><canvas id="cv" width="900" height="900"></canvas><div id="info"></div></div>
+</div>
+<script>
+const DATA = /*DATA*/[];
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let cur = 0, yaw = 0.6, pitch = 0.45, zoom = 1, tris = null;
+function load(i) {
+  cur = i; const d = DATA[i], f = new Float32Array(Uint8Array.from(atob(d.b64), c => c.charCodeAt(0)).buffer);
+  tris = f; document.querySelectorAll('#list button').forEach((b, k) => b.classList.toggle('on', k === i));
+  document.getElementById('info').textContent = `${d.title}: ${d.tris} triangles, ${d.size[0]} x ${d.size[1]} x ${d.size[2]} mm  (${d.name}.stl)`;
+  draw();
+}
+function hex(c) { return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]; }
+function draw() {
+  const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  const d = DATA[cur], col = hex(d.colour), n = tris.length / 9, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  let zmin = 1e9, zmax = -1e9; for (let i = 2; i < tris.length; i += 3) { zmin = Math.min(zmin, tris[i]); zmax = Math.max(zmax, tris[i]); }
+  const zc = (zmin + zmax) / 2, sc = zoom * W * 0.78 / Math.max(d.size[0], d.size[1], d.size[2], 20);
+  const P = (x, y, z) => { z -= zc; const x1 = x * cy - y * sy, y1 = x * sy + y * cy, y2 = y1 * cp - z * sp, z2 = y1 * sp + z * cp; return [W / 2 + x1 * sc, H / 2 + 20 - z2 * 0 - (z * cp + y1 * sp) * sc * 0 - (z * cp + y1 * sp) * sc, y2]; };
+  const list = [];
+  for (let i = 0; i < n; i++) {
+    const o = i * 9, a = P(tris[o], tris[o + 1], tris[o + 2]), b = P(tris[o + 3], tris[o + 4], tris[o + 5]), c = P(tris[o + 6], tris[o + 7], tris[o + 8]);
+    // normal in view space from the rotated vertices
+    const ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - a[0], vy = c[1] - a[1];
+    list.push([(a[2] + b[2] + c[2]) / 3, i, a, b, c, ux * vy - uy * vx]);
+  }
+  list.sort((p, q) => q[0] - p[0]);
+  const L = [0.35, -0.55, 0.75], ll = Math.hypot(...L);
+  for (const [dp, i, a, b, c, area] of list) {
+    const o = i * 9;
+    let nx = (tris[o + 4] - tris[o + 1]) * (tris[o + 8] - tris[o + 2]) - (tris[o + 5] - tris[o + 2]) * (tris[o + 7] - tris[o + 1]);
+    let ny = (tris[o + 5] - tris[o + 2]) * (tris[o + 6] - tris[o]) - (tris[o + 3] - tris[o]) * (tris[o + 8] - tris[o + 2]);
+    let nz = (tris[o + 3] - tris[o]) * (tris[o + 7] - tris[o + 1]) - (tris[o + 4] - tris[o + 1]) * (tris[o + 6] - tris[o]);
+    const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+    const rx = nx * cy - ny * sy, ry0 = nx * sy + ny * cy, ry = ry0 * cp - nz * sp, rz = ry0 * sp + nz * cp;     // rotated normal (view space: y is depth)
+    const lit = Math.max(0, (rx * L[0] + ry * L[1] + rz * L[2]) / ll), s = 0.42 + 0.62 * lit;
+    g.fillStyle = `rgb(${Math.min(255, col[0] * s) | 0},${Math.min(255, col[1] * s) | 0},${Math.min(255, col[2] * s) | 0})`;
+    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.closePath(); g.fill();
+    g.strokeStyle = g.fillStyle; g.lineWidth = 0.6; g.stroke();
+  }
+}
+const list = document.getElementById('list');
+DATA.forEach((d, i) => { const b = document.createElement('button'); b.textContent = d.title; b.onclick = () => load(i); list.appendChild(b); });
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+cv.addEventListener('pointermove', e => { if (!drag) return; yaw += (e.clientX - drag[0]) * 0.01; pitch = Math.max(-1.5, Math.min(1.5, pitch + (e.clientY - drag[1]) * 0.01)); drag = [e.clientX, e.clientY]; draw(); });
+cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = 'grab'; });
+cv.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(.4, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : .9))); draw(); }, { passive: false });
+if (DATA.length) load(0);
+</script>
+</body>
+</html>
