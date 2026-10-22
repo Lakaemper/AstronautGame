@@ -40,7 +40,7 @@
   <h1>ASTRO GAME</h1>
   <div class="sub">Art sheet: every picture and animation frame used in the game</div>
   <p><a class="back" href="index.html">&larr; Back to the game</a></p>
-  <p>The pictures are drawn by the game's own code from the files in the <code>art/</code> folder. Some pieces (rover, shield, the fires, the board tiles) are not image files at all: the game paints them with its crayon and paper-cut code.</p>
+  <p>Every picture in the game is a PNG file in the <code>art/</code> folder (section 1 and 2 show the files). The game cuts frames out of them and moves, scales, tints and fades them, but it does not paint any artwork by code.</p>
 </header>
 <main id="cards"></main>
 <script>
@@ -57,6 +57,11 @@ const loadArt = (key, file) => { const im = new Image(); im.onload = () => redra
 loadArt('sheet', 'AstroAnimsheet.png'); loadArt('sheetRed', 'AstroAnimsheetRed.png');
 loadArt('shipBlue', 'AstroShipBlue.png'); loadArt('shipRed', 'AstroShipRed.png');
 loadArt('fire', 'AstroFire.png'); loadArt('expl', 'AstroExplosion.png'); loadArt('bg', 'AstroBG.png');
+loadArt('roverBlue', 'AstroRoverBlue.png'); loadArt('roverRed', 'AstroRoverRed.png'); loadArt('barrelOn', 'AstroBarrelArmed.png'); loadArt('barrelOff', 'AstroBarrelEmpty.png');
+loadArt('shield', 'AstroShield.png'); loadArt('base', 'AstroBase.png'); loadArt('shadow', 'AstroShadow.png'); loadArt('hotring', 'AstroHotRing.png');
+loadArt('bang', 'AstroBang.png'); loadArt('zzz', 'AstroZzz.png'); loadArt('glow', 'AstroGlow.png'); loadArt('tiles', 'AstroTiles.png'); loadArt('hexes', 'AstroHexes.png'); loadArt('banner', 'AstroBanner.png'); loadArt('sky', 'AstroSky.png'); loadArt('beam', 'AstroBeam.png');
+const imgOk = im => im && im.complete && im.naturalWidth;
+const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
   front: [205, 0, 108, 160], wave: [514, 0, 116, 160],
@@ -74,81 +79,10 @@ function sprite(im, r, cx, by, h) {
   g.drawImage(im, r[0], r[1], r[2], r[3], cx - w / 2, by - h, w, h);
 }
 function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
-function crayon(path, color, lw = 3.5) {
-  g.save(); g.beginPath(); path(); g.fillStyle = color; g.fill(); g.clip();
-  g.strokeStyle = '#ffffff40'; g.lineWidth = 1.5;
-  for (let i = -120; i < 120; i += 7) { g.beginPath(); g.moveTo(i, 120); g.lineTo(i + 120, 0); g.stroke(); }
-  g.restore();
-  g.beginPath(); path(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#111'; g.stroke();
-}
-function wobblyPath(pts, seed, amp = 1.1) {          // closed shape through the points, edges a little uneven like hand-cut paper
-  const r = seeded(seed), P = pts.map(([x, y]) => [x + (r() - .5) * 2 * amp, y + (r() - .5) * 2 * amp]), n = P.length;
-  g.moveTo((P[0][0] + P[n - 1][0]) / 2, (P[0][1] + P[n - 1][1]) / 2);
-  for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; g.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
-  g.closePath();
-}
-const circlePts = (x, y, r, n = 12) => Array.from({ length: n }, (_, i) => [x + Math.cos(i / n * 6.2832) * r, y + Math.sin(i / n * 6.2832) * r]);
-function paper(pathFn, color, { lw = 3, shade = .16, shadow = true } = {}) {
-  if (shadow) { g.save(); g.translate(2.2, 2.8); g.beginPath(); pathFn(); g.fillStyle = '#0000002e'; g.fill(); g.restore(); }   // this layer lies on the one below
-  g.save(); g.beginPath(); pathFn(); g.fillStyle = color; g.fill(); g.clip();
-  g.lineWidth = 1.1; g.strokeStyle = 'rgba(255,255,255,.3)';                                     // pencil strokes: light direction
-  for (let i = -100; i < 100; i += 5) { g.beginPath(); g.moveTo(i, 80); g.lineTo(i + 70, -10); g.stroke(); }
-  g.strokeStyle = `rgba(0,0,0,${shade})`;                                                        // a second, darker hatching direction
-  for (let i = -100; i < 100; i += 6) { g.beginPath(); g.moveTo(i, -80); g.lineTo(i + 60, 10); g.stroke(); }
-  g.restore();
-  g.beginPath(); pathFn(); g.lineWidth = lw; g.lineJoin = 'round'; g.strokeStyle = '#161616'; g.stroke();
-}
-function drawRover(cx, by, s, col) {                 // moon rover in paper-cut pencil style: wheels, chassis, solar panel, dome, dish
-  g.save(); g.translate(cx, by); g.scale(s * .92, s * .92);
-  const line = (x0, y0, x1, y1, w = 3) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineWidth = w; g.lineCap = 'round'; g.strokeStyle = '#161616'; g.stroke(); };
-  const cut = (pts, seed, color, o, amp) => paper(() => wobblyPath(pts, seed, amp), color, o);
-  // wheels with suspension arms
-  for (const [i, wx] of [-27, 0, 27].entries()) line(wx, -12, wx * .8, -25, 3.5);
-  for (const [i, wx] of [-27, 0, 27].entries()) {
-    cut(circlePts(wx, -12, 12.5, 14), 10 + i, '#454545', { lw: 3 }, .7);                          // tyre
-    g.save(); g.strokeStyle = '#ffffff55'; g.lineWidth = 1.2;                                     // tread
-    for (let k = 0; k < 14; k++) { const a = k / 14 * 6.2832; g.beginPath(); g.moveTo(wx + Math.cos(a) * 10.6, -12 + Math.sin(a) * 10.6); g.lineTo(wx + Math.cos(a) * 12, -12 + Math.sin(a) * 12); g.stroke(); }
-    g.restore();
-    cut(circlePts(wx, -12, 7.6, 10), 20 + i, '#b0b0b0', { lw: 2.2, shadow: false }, .5);          // rim
-    for (let k = 0; k < 5; k++) { const a = k / 5 * 6.2832 + i; line(wx + Math.cos(a) * 1.5, -12 + Math.sin(a) * 1.5, wx + Math.cos(a) * 7, -12 + Math.sin(a) * 7, 1.6); }
-    cut(circlePts(wx, -12, 2.8, 8), 30 + i, '#efe8d2', { lw: 1.8, shadow: false }, .3);          // hub
-  }
-  // mast and solar panel behind the body
-  line(26, -43, 24, -61, 3);
-  line(-15, -43, -15, -52, 3);
-  cut([[-37, -53], [-6, -60], [-2, -53], [-33, -46]], 40, '#2d57b3', { lw: 2.6, shade: .22 }, .6);
-  g.save(); g.strokeStyle = '#a8c4ff'; g.lineWidth = 1.2;                                         // solar cells
-  const lerp = (a, b, t) => a + (b - a) * t;
-  for (const t of [.25, .5, .75]) { g.beginPath(); g.moveTo(lerp(-37, -6, t), lerp(-53, -60, t)); g.lineTo(lerp(-33, -2, t), lerp(-46, -53, t)); g.stroke(); }
-  g.beginPath(); g.moveTo(lerp(-37, -33, .5), lerp(-53, -46, .5)); g.lineTo(lerp(-6, -2, .5), lerp(-60, -53, .5)); g.stroke();
-  g.restore();
-  // chassis: team colour, darker skirt, cream stripe, hatch, rivets, headlight, bumper
-  cut([[-39, -27], [-37, -38], [-27, -43], [27, -43], [37, -37], [41, -28], [36, -21], [-34, -21]], 50, col, { lw: 3.4 }, .9);
-  cut([[-34, -21], [36, -21], [40, -27], [-38, -27]], 51, 'rgba(0,0,0,.2)', { lw: 1.8, shadow: false }, .4);
-  cut([[-34, -36], [29, -36], [33, -32], [-35, -32]], 52, '#f4ecd6', { lw: 2, shadow: false }, .5);
-  cut([[-24, -42], [-9, -42], [-9, -37], [-24, -37]], 53, 'rgba(255,255,255,.22)', { lw: 1.8, shadow: false }, .5);
-  for (const [rx, ry] of [[-34, -25], [-34, -39], [33, -25], [31, -40], [0, -25]]) { g.beginPath(); g.arc(rx, ry, 1.7, 0, 7); g.fillStyle = '#222'; g.fill(); }
-  cut([[40, -27], [49, -23], [48, -17], [38, -18]], 54, '#8f8f8f', { lw: 2.4 }, .5);
-  cut(circlePts(37.5, -32, 3.6, 8), 55, '#ffe27a', { lw: 1.8, shadow: false }, .3);
-  // cockpit dome (like the astronaut's visor) on a grey rim
-  cut([[-10, -43], [22, -43], [23, -39], [-11, -39]], 60, '#9a9a9a', { lw: 2.2 }, .5);
-  const dome = Array.from({ length: 9 }, (_, i) => [6 + Math.cos(Math.PI - i / 8 * Math.PI) * 15, -43 - Math.sin(Math.PI - i / 8 * Math.PI) * 16]);
-  cut(dome, 61, '#33aef2', { lw: 3 }, .5);
-  g.fillStyle = 'rgba(255,255,255,.88)'; g.beginPath(); g.ellipse(-.5, -52, 3.4, 6.2, -.5, 0, 7); g.fill();
-  g.beginPath(); g.ellipse(12, -50, 1.8, 2.8, -.5, 0, 7); g.fill();
-  // dish on the mast
-  cut([[12, -66], [22, -73], [33, -68], [29, -60], [18, -61]], 70, '#e2dcc7', { lw: 2.4 }, .7);
-  line(23, -62, 28, -73, 2); g.beginPath(); g.arc(28.5, -74, 2.2, 0, 7); g.fillStyle = '#e8412e'; g.fill(); g.lineWidth = 1.4; g.strokeStyle = '#161616'; g.stroke();
-  g.restore();
-}
 function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
 const FLAME_K = [.78, .92, .95, 1];
 function flameUp(cx, baseY, f, h) { h *= FLAME_K[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }
-function fireGlow(cx, cy, r, a) {
-  const glow = g.createRadialGradient(cx, cy, 3, cx, cy, r);
-  glow.addColorStop(0, `rgba(255,195,70,${a})`); glow.addColorStop(1, 'rgba(255,120,20,0)');
-  g.fillStyle = glow; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
-}
+function fireGlow(cx, cy, r, a) { g.save(); g.globalAlpha *= a; blit(ART.glow, 0, 0, 256, 256, cx - r, cy - r, 2 * r, 2 * r); g.restore(); }
 const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
 function drawStation(cx, cy, s, now) {              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
   s *= .8;
@@ -161,30 +95,11 @@ function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one
   fireGlow(cx, cy, 40 * s, .34);
   flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
 }
-function drawShield(p, cx, cy, s, vis) {            // glass dome seen from above: a circle of hex size, 70% opaque
-  const L = vis ? vis.lift : 0, r = 47 * s;
+function drawShield(p, cx, cy, s, vis) {            // glass dome seen from above (a picture per team and crack stage), a circle of hex size
+  const L = vis ? vis.lift : 0, f = (p.owner === 1 ? 3 : 0) + Math.min(2, p.dmg || 0);
   g.save();
-  g.globalAlpha *= (p.dmg ? .42 : .7) * (vis && vis.alpha < 1 ? vis.alpha : 1);   // a cracked shield is more transparent
-  g.translate(0, -L * 10 * s);
-  const gr = g.createRadialGradient(cx - r * .35, cy - r * .4, r * .08, cx, cy, r);
-  gr.addColorStop(0, '#ffffff'); gr.addColorStop(.35, '#d4f3ff'); gr.addColorStop(.8, '#8fd8ff'); gr.addColorStop(1, '#4fb4ec');
-  g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = gr; g.fill();                                   // the dome
-  g.lineWidth = 5 * s; g.strokeStyle = COLOR[p.owner]; g.stroke();                                       // rim in the team colour
-  g.beginPath(); g.arc(cx, cy, r - 5 * s, 0, 7); g.lineWidth = 1.5 * s; g.strokeStyle = '#ffffffc0'; g.stroke();   // glass edge
-  g.beginPath(); g.ellipse(cx - r * .38, cy - r * .42, r * .2, r * .11, -.7, 0, 7); g.fillStyle = '#ffffffe0'; g.fill();   // highlight
-  g.beginPath(); g.arc(cx + r * .3, cy + r * .38, r * .07, 0, 7); g.fillStyle = '#ffffffa0'; g.fill();
-  const CRACKS1 = [[[-.05, -1], [.05, -.55], [-.12, -.2], [.1, .1], [0, .5], [.08, 1]], [[.1, .1], [.45, .2], [.6, .5], [.95, .55]], [[-.12, -.2], [-.5, -.1], [-.7, .25], [-1, .3]], [[.05, -.55], [.4, -.7], [.65, -.5], [.95, -.6]]], CRACKS2 = [[[-.12, -.2], [-.2, .3], [-.35, .65], [-.3, 1]], [[.1, .1], [.3, .45], [.55, .8]], [[.05, -.55], [-.3, -.75], [-.6, -.7], [-.9, -.5]]];   // the second crack stage adds more cracks
-  if (p.dmg) {                                                                                           // cracks
-    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip(); g.lineJoin = 'round'; g.lineCap = 'round';
-    g.globalAlpha = .95 * (vis && vis.alpha < 1 ? vis.alpha : 1);                                          // cracks stay clearly visible
-    for (const [col, lw, off] of [['#ffffff', 4.6, 1.8], ['#0b1640', 2.6, 0]]) {
-      g.strokeStyle = col; g.lineWidth = lw * s;
-      for (const c of [...CRACKS1, ...(p.dmg >= 2 ? CRACKS2 : [])]) {
-        g.beginPath(); c.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](cx + (x * r) + off * s, cy + (y * r) + off * s)); g.stroke();
-      }
-    }
-    g.restore();
-  }
+  if (vis && vis.alpha < 1) g.globalAlpha *= vis.alpha;
+  blit(ART.shield, f * 208, 0, 208, 208, cx - 52 * s, cy - 52 * s - L * 10 * s, 104 * s, 104 * s);
   g.restore();
 }
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
@@ -197,12 +112,12 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   if (vis && vis.alpha < 1) g.globalAlpha *= vis.alpha;
   // team-coloured crayon base + soft shadow stay on the ground, so every piece is readable on any square
   const bs = (1 - .25 * L) * sc;
-  g.fillStyle = L ? '#0002' : '#0003'; g.beginPath(); g.ellipse(cx + 3 * s, by + 4 * s, 34 * s * bs, 10 * s * bs, 0, 0, 7); g.fill();
-  crayon(() => g.ellipse(cx, by, 34 * s * bs, 10 * s * bs, 0, 0, 7), COLOR[o], 3);
+  g.save(); if (L) g.globalAlpha *= .67; blit(ART.shadow, cx - 40 * s * bs, by - 15 * s * bs, 80 * s * bs, 30 * s * bs); g.restore();
+  blit(ART.base, Math.min(o, 2) * 160, 0, 160, 60, cx - 40 * s * bs, by - 15 * s * bs, 80 * s * bs, 30 * s * bs);
   if (p.hot) {                                       // overcharged: pulsing red warning ring (it must jump next time or it explodes)
     const pulse = .5 + .5 * Math.sin(now / 110);
-    g.strokeStyle = `rgba(255,40,40,${.45 + .55 * pulse})`; g.lineWidth = 4 + 3 * pulse;
-    g.beginPath(); g.ellipse(cx, by, (40 + 4 * pulse) * s * bs, (13 + 2 * pulse) * s * bs, 0, 0, 7); g.stroke();
+    const kx = (40 + 4 * pulse) / 44 * s * bs, ky = (13 + 2 * pulse) / 14 * s * bs;
+    g.save(); g.globalAlpha *= .45 + .55 * pulse; blit(ART.hotring, cx - 50 * kx, by - 20 * ky, 100 * kx, 40 * ky); g.restore();
   }
   g.save();                                          // body: lifted and scaled up during a flight (3D)
   const k = (1 + .45 * L) * sc;
@@ -219,14 +134,10 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   } else if (p.type === 'drone') {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, 143, 160], cx, by + 2 * s, 76 * s);
   } else if (p.type === 'rover') {
-    drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
+    const rk = s * .95 * .92;
+    blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
     const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
-    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92);
-    paper(() => wobblyPath([[10, -4.2], [28, -4.6], [34, -3.2], [34, 3.2], [28, 4.6], [10, 4.2]], 80, .5), '#5d5d5d', { lw: 2.6, shade: .2 });                       // dark steel, so it stands out against a red or blue chassis
-    paper(() => wobblyPath([[22, -4.6], [28, -4.8], [28, 4.8], [22, 4.6]], 83, .3), armed ? '#e8412e' : '#a8a8a8', { lw: 2, shadow: false });   // red band = armed
-    paper(() => wobblyPath([[6, -6], [13, -6], [13, 6], [6, 6]], 81, .4), '#3a3a3a', { lw: 2.2, shadow: false });                    // collar
-    paper(() => wobblyPath(circlePts(35, 0, 3.6, 8), 82, .3), armed ? '#ffd24d' : '#c4c4c4', { lw: 2, shadow: false });             // lens
-    g.restore();
+    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92); blit(armed ? ART.barrelOn : ART.barrelOff, -2, -10, 40, 20); g.restore();
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Home Planet of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -234,17 +145,8 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s + (h - 80 * s) / 2, h);
   }
   g.filter = 'none';
-  if (p.st > 0) {                                    // zzz in crayon lettering
-    g.textAlign = 'left'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 5; g.strokeStyle = '#111'; g.fillStyle = '#fff';
-    for (const [t, dx, dy, kk] of [['z', .35, -.2, .8], ['z', .6, -.62, 1], ['Z', .85, -1.1, 1.25]]) {
-      g.font = `bold ${26 * kk * s}px "Comic Sans MS","Chalkboard SE",cursive`;
-      g.strokeText(t, cx + 38 * dx * s, cy + 38 * dy * s); g.fillText(t, cx + 38 * dx * s, cy + 38 * dy * s);
-    }
-  }
-  if (p.hot) {                                       // red exclamation mark above the head
-    g.font = `bold ${30 * s}px "Comic Sans MS","Chalkboard SE",cursive`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('!', cx + 26 * s, cy - 38 * s); g.fillStyle = '#e01010'; g.fillText('!', cx + 26 * s, cy - 38 * s);
-  }
+  if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
+  if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
   if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
     const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
     for (let i = 0; i < slots; i++) {
@@ -272,7 +174,8 @@ const C = (q, r, o) => mk('core', o, q, r);
 const F = (q, r) => mk('fire', 2, q, r);
 const ST = (q, r) => mk('station', 2, q, r);
 const COL = { walk: '#3ddc84', jump: '#35d0ff', jump2: '#1fa3c8', capture: '#ff4d5e', push: '#ffa733', refuel: '#ffe14d', feed: '#ff9de2', cover: '#9fe3ff', no: '#ff4d5e' };
-const TILE = ['#2e6644', '#33704a', '#2b6040'];
+// one hex of the board is a picture (frames 0-14 = tint x ground tile, 15 blue wash, 16 red wash, 17 yellow wash, 18 outline; 96 x 110 game px each, scaled to the tutorial hex size)
+const hexPic = (x, y, i) => { const k = HS / 54; blit(ART.hexes, (i % 5) * 192, Math.floor(i / 5) * 220, 192, 220, x - 48 * k, y - 55 * k, 96 * k, 110 * k); };
 
 function hexPath(x, y, r) { g.beginPath(); for (let i = 0; i < 6; i++) { const a = (60 * i - 30) * Math.PI / 180; g[i ? 'lineTo' : 'moveTo'](x + r * Math.cos(a), y + r * Math.sin(a)); } g.closePath(); }
 function label(x, y, text, size = 15) {
@@ -298,9 +201,12 @@ function trimEnds(pts, a, b) {                       // shorten both ends so the
   const p = pts.map(q => q.slice()), mv = (from, to, d) => { const dx = to[0] - from[0], dy = to[1] - from[1], l = Math.hypot(dx, dy) || 1; return [from[0] + dx / l * d, from[1] + dy / l * d]; };
   const n = p.length; p[0] = mv(pts[0], pts[1], a); p[n - 1] = mv(pts[n - 1], pts[n - 2], b); return p;
 }
-function drawBeam(x0, y0, x1, y1) {
-  g.lineCap = 'round';
-  for (const [w, c] of [[20, 'rgba(255,45,45,.30)'], [11, '#ff3b3b'], [6, '#4a86ff'], [2.4, '#ffffff']]) { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x0 + 3, y0 + 3); g.lineTo(x1 + 3, y1 + 3); g.stroke(); }
+function drawBeam(x0, y0, x1, y1) {                // the beam picture (red outside), stretched between two points: left cap, middle, right cap
+  x0 += 3; y0 += 3; x1 += 3; y1 += 3;
+  const len = Math.hypot(x1 - x0, y1 - y0), o = 512;
+  g.save(); g.translate(x0, y0); g.rotate(Math.atan2(y1 - y0, x1 - x0)); g.scale(.7, .7);
+  blit(ART.beam, o + 2, 0, 26, 80, -13, -20, 13, 40); blit(ART.beam, o + 28, 0, 456, 80, 0, -20, len / .7, 40); blit(ART.beam, o + 484, 0, 26, 80, len / .7, -20, 13, 40);
+  g.restore();
 }
 function diagram(cvs, spec) {
   const w = spec.w || 340, h = spec.h || 290, dpr = 2;
@@ -309,7 +215,7 @@ function diagram(cvs, spec) {
   const ox = spec.ox ?? w / 2, oy = spec.oy ?? h / 2, P = (q, r) => [ox + HW * (q + r / 2), oy + 1.5 * HS * r];
   g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);
   for (const [q, r] of (spec.cells || ring(spec.radius || 2))) {                   // tiles
-    const [x, y] = P(q, r); hexPath(x, y, HS - 1); g.fillStyle = TILE[(((q - r) % 3) + 3) % 3]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = '#173826'; g.stroke();
+    const [x, y] = P(q, r); hexPic(x, y, (((q - r) % 3) + 3) % 3 * 5 + ((q * 7 + r * 3) % 5 + 5) % 5); hexPic(x, y, 18);
   }
   for (const hl of spec.hl || []) {                                                 // lit squares, like the game's drag hints
     const [x, y] = P(hl[0], hl[1]); hexPath(x, y, HS - 4); g.fillStyle = (hl[2] || COL.walk) + '88'; g.fill();
@@ -328,57 +234,6 @@ function diagram(cvs, spec) {
 
 
 const CELL = 100;
-function makeTiles() {
-  const T = CELL, out = [];
-  const poly = (k, rnd, cx, cy, r, n, jit) => Array.from({ length: n }, (_, i) => {   // jagged outline, like scissor cuts
-    const a = i / n * 6.2832 + rnd() * .5, rr = r * (1 - jit + rnd() * jit * 2);
-    return [cx + Math.cos(a) * rr * 1.1, cy + Math.sin(a) * rr * .85];
-  });
-  const path = (k, pts) => { k.beginPath(); pts.forEach(([x, y], i) => i ? k.lineTo(x, y) : k.moveTo(x, y)); k.closePath(); };
-  const hatch = (k, pts, gap, ang, col) => {            // pencil hatching clipped to a shape
-    k.save(); path(k, pts); k.clip(); k.strokeStyle = col; k.lineWidth = 1.1;
-    for (let i = -T; i < 2 * T; i += gap) { k.beginPath(); k.moveTo(i, T + 4); k.lineTo(i + T * ang, -4); k.stroke(); }
-    k.restore();
-  };
-  const cut = (k, pts, fill, hatchGap) => {             // a cut-out paper piece: shadow, fill, light edge, pencil line
-    k.save(); k.translate(2.5, 3.5); path(k, pts); k.fillStyle = '#04150c' + '66'; k.fill(); k.restore();
-    path(k, pts); k.fillStyle = fill; k.fill();
-    if (hatchGap) hatch(k, pts, hatchGap, .55, '#06281a44');
-    k.lineJoin = 'round'; path(k, pts); k.strokeStyle = '#ffffff80'; k.lineWidth = 3; k.stroke();
-    path(k, pts); k.strokeStyle = '#06281acc'; k.lineWidth = 1.3; k.stroke();
-  };
-  const crater = (k, rnd, cx, cy, r) => {               // raised rim, sunken pit, shaded inside
-    cut(k, poly(k, rnd, cx, cy, r, 9, .14), '#8fc6a6c8', 0);
-    const pit = poly(k, rnd, cx + r * .1, cy + r * .12, r * .62, 8, .12);
-    path(k, pit); k.fillStyle = '#0c3322c0'; k.fill();
-    hatch(k, pit, 4, .55, '#04150c77');
-    path(k, pit); k.strokeStyle = '#04150cdd'; k.lineWidth = 1.4; k.stroke();
-  };
-  const grain = (k, rnd, n) => { for (let i = 0; i < n; i++) { k.fillStyle = rnd() < .5 ? '#ffffff30' : '#06281a40'; k.fillRect(rnd() * T, rnd() * T, 1.6, 1.6); } };
-  const stone = (k, rnd, cx, cy, r) => cut(k, poly(k, rnd, cx, cy, r, 6, .25), '#86bd9ed4', 0);
-  const crack = (k, rnd, x, y, a, len, depth) => {      // branching pencil crack
-    k.strokeStyle = '#04150cc0'; k.lineWidth = 1.4; k.lineCap = 'round'; k.beginPath(); k.moveTo(x, y);
-    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len; k.lineTo((x + x1) / 2 + (rnd() - .5) * 8, (y + y1) / 2 + (rnd() - .5) * 8); k.lineTo(x1, y1); k.stroke();
-    if (depth > 0) { crack(k, rnd, x1, y1, a + .6 + rnd() * .4, len * .6, depth - 1); crack(k, rnd, x1, y1, a - .6 - rnd() * .4, len * .55, depth - 1); }
-  };
-  for (let i = 0; i < 5; i++) {
-    const c = document.createElement('canvas'); c.width = c.height = T; const k = c.getContext('2d'), rnd = seeded(101 + 37 * i);
-    if (i === 0) { crater(k, rnd, 40, 56, 26); crater(k, rnd, 76, 28, 11); }                         // one big and one small crater
-    if (i === 1) {                                                                                     // two layered rock slabs
-      cut(k, [[8, 80], [20, 52], [46, 46], [70, 56], [92, 78], [60, 90]], '#5f9f7fd8', 5);
-      cut(k, [[34, 82], [44, 62], [66, 60], [84, 80], [60, 88]], '#93caabdc', 0);
-    }
-    if (i === 2) {                                                                                     // dusty plain: hatched drifts and specks
-      for (let j = 0; j < 3; j++) { const y = 22 + j * 26 + rnd() * 6, pts = [[8, y + 8], [30, y - 4], [60, y - 6], [92, y + 6], [60, y + 10]]; hatch(k, pts, 4, .35, '#06281a66'); path(k, pts); k.strokeStyle = '#06281a99'; k.lineWidth = 1.1; k.stroke(); }
-      for (let j = 0; j < 9; j++) { k.fillStyle = '#06281a88'; k.beginPath(); k.arc(8 + rnd() * 84, 8 + rnd() * 84, 1 + rnd() * 1.4, 0, 7); k.fill(); }
-    }
-    if (i === 3) { for (let j = 0; j < 6; j++) stone(k, rnd, 14 + rnd() * 72, 14 + rnd() * 72, 5 + rnd() * 6); crater(k, rnd, 66, 68, 14); }   // scattered stones and a pit
-    if (i === 4) { crack(k, rnd, 14, 30, .5, 34, 2); crack(k, rnd, 86, 84, 3.6, 28, 2); cut(k, poly(k, rnd, 66, 30, 14, 7, .2), '#86bd9ed4', 6); }   // cracked ground
-    grain(k, rnd, 260);
-    out.push(c);
-  }
-  return out;
-}
 
 const jobs = [];
 function renderAll() { jobs.forEach(j => j()); }
@@ -398,7 +253,7 @@ const V = (o = {}) => ({ lift: 0, scale: 1, alpha: 1, side: 1, ang: 0, flame: fa
 const outline = (r, x, y, k, col = '#ffd24d') => { g.strokeStyle = col; g.lineWidth = 1.4; g.strokeRect(x + r[0] + .5, y + r[1] + .5, r[2], r[3]); if (k !== undefined) small(x + r[0] + 3, y + r[1] + 9, String(k), col); };
 
 /* 1. the image files */
-add('1. Image files in the art folder', 'The seven PNG files, drawn at their real size (the two ships are 143 x 160 px, the flame 179 x 50 px). Yellow boxes are the rectangles the game cuts out of each sheet (the numbers are the frame indexes used in the code).', 1100, 1010, () => {
+add('1. Image files in the art folder (the original seven)', 'The seven original PNG files, drawn at their real size (the two ships are 143 x 160 px, the flame 179 x 50 px). Yellow boxes are the rectangles the game cuts out of each sheet (the numbers are the frame indexes used in the code).', 1100, 1010, () => {
   const back = (x, y, w, h) => { g.fillStyle = '#2a2f3a'; g.fillRect(x - 3, y - 3, w + 6, h + 6); };
   const put = (im, x, y, name, w, h) => { small(x, y - 14, name + (w > 200 ? '   ' + w + ' x ' + h + ' px' : '')); back(x, y, w, h); if (ready(im)) g.drawImage(im, x, y); };
   put(ART.sheet, 10, 30, 'AstroAnimsheet.png (blue astronaut)', 748, 160); FRAMES.forEach((r, k) => outline(r, 10, 30, k)); outline(R.wave, 10, 30, 'wave');
@@ -408,6 +263,20 @@ add('1. Image files in the art folder', 'The seven PNG files, drawn at their rea
   put(ART.expl, 10, 470, 'AstroExplosion.png (6 frames)', 998, 200); R.boom.forEach((r, k) => outline(r, 10, 470, k));
   put(ART.bg, 10, 730, 'AstroBG.png (planets, stars, rocks)', 384, 256); outline(R.sun, 10, 730, 'sun'); outline(R.neptune, 10, 730, 'Neptune', '#9fe3ff'); outline(R.mars, 10, 730, 'Mars', '#ff9de2'); R.deco.forEach((r, k) => outline(r, 10, 730, k, '#8cf0a8'));
   small(430, 770, 'Neptune = Blue Home Planet', '#9fe3ff'); small(430, 794, 'Mars = Red Home Planet', '#ff9de2'); small(430, 818, 'the rest: stickers behind the board and the page', '#8cf0a8');
+});
+
+
+/* 1b. the files of the pieces and the board */
+add('1b. Image files for pieces, effects and the board', 'The sixteen files that used to be painted by code (the tiles are now also baked into the hexes). Each is drawn at twice the size of the game cell (the tiles and the sky at game size). Sheets hold several frames side by side: the shield (blue and red, undamaged and two crack stages), the team bases (blue, red, neutral), the five ground tiles and the two beam flicker frames.', 1100, 1100, () => {
+  const put = (im, x, y, name, w, h, k = 1) => { small(x, y - 14, name); g.fillStyle = '#2a2f3a'; g.fillRect(x - 3, y - 3, w * k + 6, h * k + 6); if (ready(im)) g.drawImage(im, x, y, w * k, h * k); };
+  put(ART.roverBlue, 10, 30, 'AstroRoverBlue.png', 220, 184); put(ART.roverRed, 260, 30, 'AstroRoverRed.png', 220, 184);
+  put(ART.barrelOn, 520, 30, 'AstroBarrelArmed.png', 80, 40); put(ART.barrelOff, 520, 110, 'AstroBarrelEmpty.png', 80, 40);
+  put(ART.shadow, 650, 30, 'AstroShadow.png', 160, 60); put(ART.hotring, 650, 120, 'AstroHotRing.png', 200, 80); put(ART.bang, 880, 30, 'AstroBang.png', 80, 100); put(ART.zzz, 980, 30, 'AstroZzz.png', 148, 144, .7);
+  put(ART.shield, 10, 260, 'AstroShield.png (blue 0, 1, 2 cracks, red 0, 1, 2 cracks)', 1248, 208, .85);
+  put(ART.base, 10, 500, 'AstroBase.png (blue, red, neutral)', 480, 60, 1); put(ART.glow, 540, 480, 'AstroGlow.png', 256, 256, .5); put(ART.beam, 700, 500, 'AstroBeam.png (two flicker frames)', 1024, 80, .38);
+  put(ART.tiles, 10, 620, 'AstroTiles.png (five ground tiles, 100 x 100 px each)', 500, 100, 1); put(ART.hexes, 10, 760, 'AstroHexes.png (19 hex frames)', 960, 880, .32); put(ART.banner, 330, 760, 'AstroBanner.png (3 frames)', 1176, 1188, .2);
+  put(ART.sky, 560, 620, 'AstroSky.png (board background, 858 x 772 px)', 858, 772, .5);
+  small(10, 770, 'The rover body and barrel, the shield stages, the bases, the shadow, the warning ring and the "!" and "zzz" marks are all drawn from these files.', '#ffd24d');
 });
 
 /* 2. astronaut animation */
@@ -460,26 +329,20 @@ add('4. Effects and animation frames', 'The flame has four flicker frames. The e
 });
 
 /* 5. board art */
-add('5. Board art', 'The cratered ground comes in five paper-cut tile variants (crater, rock slabs, dusty plain, pebbles, cracks) laid out so that neighbours differ. Each hex gets a green tint, the baselines a blue or red wash and the hexes around the central fire a yellow refuel wash. The sticker sheet supplies the planets, stars and rocks behind the board and the page.', 1100, 720, () => {
-  const tiles = makeTiles(), hx = (cx, cy, r) => { g.beginPath(); for (let i = 0; i < 6; i++) { const a = (60 * i - 30) * Math.PI / 180; g[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a)); } g.closePath(); };
-  const tint = ['#1f5c3ecc', '#2c7451cc', '#256848cc'];
-  small(10, 14, 'Five surface tiles (100 x 100 px each)');
-  tiles.forEach((t, k) => { g.drawImage(t, 10 + k * 120, 28, 100, 100); small(60 + k * 120, 140, 'tile ' + k, '#fff', 'center'); });
-  small(640, 14, 'Hex tints and washes');
-  [['tint 0', tint[0], 0], ['tint 1', tint[1], 0], ['tint 2', tint[2], 0], ['Blue baseline', '#3aa0ff88', 1], ['Red baseline', '#ff5a6e88', 1], ['Refuel zone', '#ffe14d66', 1]].forEach(([l, c, over], k) => {
-    const cx = 680 + (k % 3) * 130, cy = 70 + Math.floor(k / 3) * 125; g.save(); hx(cx, cy, 44); g.clip(); g.fillStyle = '#1f5c3e'; g.fillRect(cx - 50, cy - 50, 100, 100); if (over) g.drawImage(tiles[1], cx - 45, cy - 50, 90, 100); g.fillStyle = c; g.fillRect(cx - 50, cy - 50, 100, 100); g.restore();
-    hx(cx, cy, 44); g.strokeStyle = '#04150caa'; g.lineWidth = 2; g.stroke(); small(cx, cy + 56, l, '#fff', 'center');
-  });
-  small(10, 172, 'A patch of board as the game lays it out');
-  const pick = seeded(2024); const HS2 = 46, HW2 = HS2 * Math.sqrt(3);
-  for (let row = 0; row < 5; row++) for (let col = 0; col < 8; col++) {
-    const cx = 60 + HW2 * (col + (row & 1) / 2), cy = 230 + 1.5 * HS2 * row; if (cx > 560) continue;
-    g.save(); hx(cx, cy, HS2); g.clip(); g.fillStyle = tint[(col + row) % 3]; g.fillRect(cx - HW2 / 2, cy - HS2, HW2, 2 * HS2); g.drawImage(tiles[Math.floor(pick() * 5)], cx - HW2 / 2, cy - HS2, HW2, 2 * HS2);
-    if (row === 4) { g.fillStyle = '#3aa0ff88'; g.fillRect(cx - HW2 / 2, cy - HS2, HW2, 2 * HS2); } if (row === 0) { g.fillStyle = '#ff5a6e88'; g.fillRect(cx - HW2 / 2, cy - HS2, HW2, 2 * HS2); }
-    g.restore(); hx(cx, cy, HS2); g.strokeStyle = '#04150caa'; g.lineWidth = 2; g.stroke();
+add('5. Board art', 'Every hex of the board is a picture from AstroHexes.png: 15 ground variants (three green tints times five paper-cut tiles: crater, rock slabs, dusty plain, pebbles, cracks), a blue and a red baseline wash, a yellow refuel wash and the hex outline. The game lays them out so that neighbours differ and stacks wash and outline on top. The board background is AstroSky.png, the stickers behind it come from the sticker sheet, and the win banner is AstroBanner.png.', 1100, 720, () => {
+  const pk = (x, y, i, k = 1) => blit(ART.hexes, (i % 5) * 192, Math.floor(i / 5) * 220, 192, 220, x - 48 * k, y - 55 * k, 96 * k, 110 * k);
+  small(10, 14, 'AstroHexes.png: all 19 frames');
+  for (let i = 0; i < 19; i++) { const x = 60 + (i % 5) * 100, y = 70 + Math.floor(i / 5) * 112; pk(x, y, i); if (i >= 15) small(x, y + 62, ['blue wash', 'red wash', 'refuel wash', 'outline'][i - 15], '#fff', 'center'); }
+  small(560, 14, 'A patch of board as the game lays it out');
+  const pick = seeded(2024), k2 = 46 / 54, HW2 = 46 * Math.sqrt(3);
+  for (let row = 0; row < 5; row++) for (let col = 0; col < 7; col++) {
+    const cx = 600 + HW2 * (col + (row & 1) / 2), cy = 70 + 1.5 * 46 * row;
+    pk(cx, cy, ((col - row) % 3 + 3) % 3 * 5 + Math.floor(pick() * 5), k2); if (row === 4) pk(cx, cy, 15, k2); if (row === 0) pk(cx, cy, 16, k2); if (row === 2 && col === 3) pk(cx, cy, 17, k2); pk(cx, cy, 18, k2);
   }
-  small(600, 300, 'Sticker sheet: sun, planets and decoration');
-  [R.sun, R.neptune, R.mars, ...R.deco].forEach((r, k) => { const x = 640 + (k % 6) * 78, y = 360 + Math.floor(k / 6) * 84, s = Math.min(62 / r[3], 70 / r[2]); if (ready(ART.bg)) g.drawImage(ART.bg, r[0], r[1], r[2], r[3], x - r[2] * s / 2, y - r[3] * s / 2, r[2] * s, r[3] * s); });
+  small(560, 330, 'Win banner (AstroBanner.png: Blue, Red, draw)');
+  [0, 1, 2].forEach(i => blit(ART.banner, 0, i * 396, 1176, 396, 560 + i * 180, 350, 174, 58));
+  small(10, 500, 'Sticker sheet: sun, planets and decoration (AstroBG.png)');
+  [R.sun, R.neptune, R.mars, ...R.deco].forEach((r, k) => { const x = 50 + (k % 12) * 86, y = 570 + Math.floor(k / 12) * 90, s = Math.min(62 / r[3], 70 / r[2]); if (ready(ART.bg)) g.drawImage(ART.bg, r[0], r[1], r[2], r[3], x - r[2] * s / 2, y - r[3] * s / 2, r[2] * s, r[3] * s); });
 });
 
 /* 6. move highlight colours */
