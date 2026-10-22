@@ -92,6 +92,7 @@ Pieces:
 - **Setup** (given as column,row): four astronauts per side (the front astronaut was removed). Blue: Core (4,8);
   astronauts (1,8), (3,8), (5,8), (7,8) (the outer two were at columns 0 and 8 until 2026-10-22); drone (2,8), rover (6,8), shield (4,6) (back row 1..7 = A drone A Core A rover A; the four corner hexes (0,0),(8,0),(0,8),(8,8) do not exist, 73 hexes). Red is Blue mirrored top to bottom (row -> 8-row), same
   columns: Core (4,0), astronauts (1,0), (3,0), (5,0), (7,0), drone (2,0), rover (6,0), shield (4,2). Both rovers start empty (laser off)
+Start setup box (UI, right of the board): Blue/Red x Human/AI tick table (replaces the old Players select; `roleSel` is a shim with the old values red/blue/none/two), astronauts 2 or 4 (2 = only the inner ones), rover/drone/shield checkboxes; applied by "New game". For online games the choice travels in the link as `&s=4111` (astronauts, rover, drone, shield) and locks the box.
   with the aim pointing away from the board: Red NW (up), Blue SW (down). A pointy-top hex board has no exact north or south, so
   these two (the vertical mirror of each other) stand for it; nothing is in line at the start. Rotation by 180 degrees is NOT a symmetry (odd rows
   are shifted), the vertical mirror is.

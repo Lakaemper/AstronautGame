@@ -13,8 +13,14 @@
   canvas#c { width:100%; aspect-ratio:1/1; border-radius:14px; touch-action:none; cursor:grab;
              border:4px solid #111; box-shadow:5px 6px 0 #0007; background:#0d1544; }
   canvas#c.dragging { cursor:grabbing; }
-  #panel { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:310px; max-width:92vw;
+  #side { display:flex; flex-direction:column; gap:14px; width:310px; max-width:92vw; }
+  #panel, #setup { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:100%;
            box-shadow:5px 6px 0 #0007; }
+  #ctrl { border-collapse:collapse; margin-bottom:6px; } #ctrl th { font-weight:400; font-size:13px; color:var(--dim); padding:0 8px; } #ctrl td { padding:2px 8px; text-align:center; } #ctrl td:first-child { text-align:left; font-weight:700; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
+  input.ck { appearance:none; -webkit-appearance:none; width:24px; height:24px; margin:0; border:3px solid #111; border-radius:6px; background:#fff; cursor:pointer; vertical-align:middle; display:inline-grid; place-items:center; }
+  input.ck:checked { background:var(--c); box-shadow:inset 0 0 0 3px #fff; }
+  #setup label { display:block; margin:2px 0; } #setup select { font:inherit; }
+  #tutorial { align-self:flex-start; margin:0; }
   h1 { margin:0 0 8px; font-size:26px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
   #turn { font-weight:700; font-size:19px; margin-bottom:6px; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
   #msg { min-height:44px; color:var(--dim); }
@@ -41,23 +47,33 @@
 <canvas id="c" width="900" height="900"></canvas>
 
 </div>
+<div id="side">
+  <button id="tutorial">Tutorial</button>
+  <div id="setup">
+    <table id="ctrl"><tr><th></th><th>Human</th><th>AI</th></tr>
+      <tr><td style="color:var(--blue)">Blue</td><td><input type="checkbox" class="ck" id="ck0h" style="--c:var(--blue)"></td><td><input type="checkbox" class="ck" id="ck0a" style="--c:var(--blue)" checked></td></tr>
+      <tr><td style="color:var(--red)">Red</td><td><input type="checkbox" class="ck" id="ck1h" style="--c:var(--red)" checked></td><td><input type="checkbox" class="ck" id="ck1a" style="--c:var(--red)"></td></tr></table>
+    <label>Astronauts <select id="nAstro"><option>2</option><option selected>4</option></select></label>
+    <label><input type="checkbox" id="cRover" checked> Rover</label>
+    <label><input type="checkbox" id="cDrone" checked> Drone</label>
+    <label><input type="checkbox" id="cShield" checked> Shield</label>
+    <button id="reset">New game</button>
+    <button id="online">Online game</button>
+    <div id="onlineinfo"></div>
+  </div>
 <div id="panel">
   <div id="turn" hidden></div><div id="msg" hidden></div>   <!-- not shown any more, but the code still writes its status texts here -->
   <div id="gauge" title="The computer's estimate of the current position (static evaluation): the blue part grows when Blue is ahead, the red part when Red is ahead.">
     <div class="glabel"><b>Blue</b><span id="gval">even</span><b>Red</b></div>
     <div class="gbar"><div id="gblue"></div></div>
   </div>
-  <label>Players <select id="role"><option value="red" selected>Human: Red (AI plays Blue)</option><option value="blue">Human: Blue (AI plays Red)</option><option value="none">No human (AI plays both)</option><option value="two">Two humans</option></select></label><br>
   <label>&nbsp; look-ahead
     <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select>
     double moves</label><br>
-  <button id="reset">New game</button>
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
-  <button id="tutorial">Tutorial</button>
-  <button id="online">Online game</button>
-  <div id="onlineinfo"></div>
   <div id="aiinfo">AI search: no move computed yet.</div>
+</div>
 </div>
 
 <script id="engine">
@@ -477,17 +493,26 @@ const anims = new Map();                        // piece -> running move animati
 let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
 const busy = () => performance.now() < animUntil;
 
+// the start setup (number of astronauts, rover, drone, shield) as chosen in the box; a 4-character code like 4111 travels in the link of an online game
+const setupEls = { astro: document.getElementById('nAstro'), rover: document.getElementById('cRover'), drone: document.getElementById('cDrone'), shield: document.getElementById('cShield') };
+const setupCode = () => setupEls.astro.value + (+setupEls.rover.checked) + (+setupEls.drone.checked) + (+setupEls.shield.checked);
+function setSetup(code) {
+  if (!/^[24][01]{3}$/.test(code || '')) code = '4111';
+  setupEls.astro.value = code[0]; setupEls.rover.checked = code[1] === '1'; setupEls.drone.checked = code[2] === '1'; setupEls.shield.checked = code[3] === '1';
+}
+// a changed setup shows at once on the board as long as no game is running (nothing played yet, the game is over, or "New game" was not pressed yet)
+for (const el of Object.values(setupEls)) el.onchange = () => { if (!online && (!started || winner !== null || history.length === 0)) { newGame(); draw(); } };
 function newGame() {
   history = []; hint = null; seen = {}; aim = null;
   anims.clear(); ghosts = []; animUntil = 0; fx.length = 0; aiPending = false; aiGen++; killWorker(); pond = null; ponderHit = null; renderInfo();
   pieces = []; turn = 0; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
   [0, 1].forEach(o => {
     const put = (type, col, row) => { const rr = o ? ROWS - 1 - row : row; add(type, o, toX(col, rr), rr); };   // Red is Blue mirrored top to bottom
-    put('core', MIDC, ROWS - 1);                  // the Core between four astronauts on the back row
-    [1, MIDC - 1, MIDC + 1, COLS - 2].forEach(c => put('astro', c, ROWS - 1));   // the four astronauts on the back row (the outer two one hex in from the edge)
-    put('shield', MIDC, ROWS - 3);                // the shield stands two rows straight in front of the Core
-    put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Core A rover A
-    put('rover', COLS - 3, ROWS - 1);
+    put('core', MIDC, ROWS - 1);                  // the Core between the astronauts on the back row
+    (+setupEls.astro.value === 4 ? [1, MIDC - 1, MIDC + 1, COLS - 2] : [MIDC - 1, MIDC + 1]).forEach(c => put('astro', c, ROWS - 1));   // 4 astronauts on the back row (the outer two one hex in from the edge); 2: only the inner ones
+    if (setupEls.shield.checked) put('shield', MIDC, ROWS - 3);                // the shield stands two rows straight in front of the Core
+    if (setupEls.drone.checked) put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Core A rover A
+    if (setupEls.rover.checked) put('rover', COLS - 3, ROWS - 1);
   });
   add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
   add('fire', 2, toX(COLS - 2, MIDC - 0), MIDC - 0);
@@ -1188,7 +1213,16 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
 }
 
 // ---------- AI (plays Blue): iterative-deepening minimax with alpha-beta ----------
-const roleSel = document.getElementById('role'), aiDepth = document.getElementById('depth');
+// who controls each colour: a 2x2 table of ticks (a tick in Human or in AI per colour); roleSel keeps the old four-value interface: 'red' (human Red), 'blue', 'none', 'two'
+const ck = [['ck0h', 'ck0a'], ['ck1h', 'ck1a']].map(r => r.map(id => document.getElementById(id)));
+const roleSel = {
+  onchange: null,
+  get value() { const b = ck[0][0].checked, r = ck[1][0].checked; return b && r ? 'two' : r ? 'red' : b ? 'blue' : 'none'; },
+  set value(v) { const h = [v === 'two' || v === 'blue', v === 'two' || v === 'red']; ck.forEach((r, i) => { r[0].checked = h[i]; r[1].checked = !h[i]; }); },
+  set disabled(d) { ck.flat().forEach(c => c.disabled = d); },
+};
+ck.forEach((row, side) => row.forEach((c, k) => c.onchange = () => { c.checked = true; row[1 - k].checked = false; if (roleSel.onchange) roleSel.onchange(); }));   // exactly one tick per row
+const aiDepth = document.getElementById('depth');
 
 const aiPlays = side => roleSel.value === 'none' || (roleSel.value === 'red' && side === 0) || (roleSel.value === 'blue' && side === 1);
 const aiTurn = () => started && winner === null && aiPlays(turn);   // 'No human': the AI moves for both sides
@@ -1299,7 +1333,7 @@ function resolveSig(sig) {                                        // find the pi
 }
 function renderOnline() {
   if (!online) { onlineInfo.style.display = 'none'; return; }
-  const me = online.color, other = 1 - me, link = location.origin + location.pathname + '?room=' + online.room;
+  const me = online.color, other = 1 - me, link = location.origin + location.pathname + '?room=' + online.room + '&s=' + online.setup;
   let html = me === 2 ? 'Online: you are watching this game.' : `Online game: you play <b style="color:${COLOR[me]}">${NAME[me]}</b>.`;
   if (!online.live) html += ' Loading the game…';
   else if (me < 2 && online.present[other]) html += ' Your friend is connected.';
@@ -1326,25 +1360,25 @@ function connectOnline() {
 function leaveOnline() {
   if (online && online.es) online.es.close();
   online = null; replaying = false; remoteMove = false;
-  roleSel.disabled = false; for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = '';
+  roleSel.disabled = false; for (const el of Object.values(setupEls)) el.disabled = false; for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = '';
   window.history.replaceState(null, '', location.pathname); renderOnline();
 }
-async function enterOnline(room, token, color) {
-  leaveOnline();
-  online = { room, token, color, applied: 0, present: [false, false], live: false, hadFriend: false, es: null };
-  window.history.replaceState(null, '', '?room=' + room + '#k=' + token);      // reload-safe; the secret stays in the hash and is never sent
-  roleSel.value = 'two'; roleSel.disabled = true; started = true;
+async function enterOnline(room, token, color, setup) {
+  leaveOnline(); setSetup(setup);
+  online = { room, token, color, setup: setupCode(), applied: 0, present: [false, false], live: false, hadFriend: false, es: null };
+  window.history.replaceState(null, '', '?room=' + room + '&s=' + online.setup + '#k=' + token);      // reload-safe; the secret stays in the hash and is never sent
+  roleSel.value = 'two'; roleSel.disabled = true; started = true; for (const el of Object.values(setupEls)) el.disabled = true;
   for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = 'none';
   replaying = true; newGame(); renderOnline(); connectOnline();
 }
 document.getElementById('online').onclick = async () => {
   if (online && !confirm('Leave this online game and open a new one?')) return;
-  try { const r = await api('new', {}); await enterOnline(r.room, r.token, r.color); } catch (e) { say('Could not start an online game: ' + e.message); }
+  try { const r = await api('new', {}); await enterOnline(r.room, r.token, r.color, setupCode()); } catch (e) { say('Could not start an online game: ' + e.message); }
 };
 
 newGame(); draw();
 { const room = new URLSearchParams(location.search).get('room'), key = (location.hash.match(/k=([\w-]+)/) || [])[1];   // opened an invitation link
-  if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color)).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
+  if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color, new URLSearchParams(location.search).get('s'))).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
 if (typeof window !== 'undefined') setInterval(() => { if (!looping && pieces) draw(); }, 50);
 </script>
 </body>
