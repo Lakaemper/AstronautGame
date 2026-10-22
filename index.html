@@ -23,7 +23,7 @@
   #starts { margin:4px 0; } #starts .sw { display:inline-block; margin:0 0 0 6px; cursor:pointer; } #starts input { position:absolute; opacity:0; pointer-events:none; }
   #starts .rect { opacity:.35; } #starts input:checked + .rect { opacity:1; box-shadow:0 0 0 3px #fff, 0 0 0 5px #111; } #starts input:disabled + .rect { cursor:default; }
   #setup label { display:block; margin:2px 0; } #setup select { font:inherit; }
-  #tutorial { align-self:flex-start; margin:0; }
+  #toprow { display:flex; gap:10px; align-self:flex-start; } #toprow button { margin:0; }
   h1 { margin:0 0 8px; font-size:26px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
   #turn { font-weight:700; font-size:19px; margin-bottom:6px; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
   #msg { min-height:44px; color:var(--dim); }
@@ -51,7 +51,7 @@
 
 </div>
 <div id="side">
-  <button id="tutorial">Tutorial</button>
+  <div id="toprow"><button id="tutorial">Tutorial</button><button id="theme">Theme: Space</button></div>
   <div id="setup">
     <table id="ctrl"><tr><th></th><th id="thH">Human</th><th id="thA">AI</th></tr>
       <tr><td><span class="rect" style="--c:var(--blue)" title="Blue"></span></td><td><input type="checkbox" class="ck" id="ck0h" style="--c:var(--blue)"></td><td><input type="checkbox" class="ck" id="ck0a" style="--c:var(--blue)" checked></td></tr>
@@ -746,6 +746,13 @@ cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classLi
 document.getElementById('endgame').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = false; newGame(); draw(); };
 document.getElementById('reset').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = true; newGame(); draw(); };
 document.getElementById('tutorial').onclick = () => window.open('TUTORIAL.html', '_blank');   // the illustrated rules live on their own page
+const themeBtn = document.getElementById('theme');
+const showTheme = () => { themeBtn.textContent = 'Theme: ' + (THEME === 'fantasy' ? 'Fantasy' : 'Space'); };
+themeBtn.onclick = () => {                           // switch the whole picture set; the game in progress stays as it is
+  THEME = THEME === 'fantasy' ? 'space' : 'fantasy';
+  try { localStorage.setItem('astroTheme', THEME); } catch (e) {}
+  loadAllArt(); applyThemeRects(); boardLayer = null; boardLayerArt = false; if (pieces) draw();
+};
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
   if (!started) { say('Press "New game" to start.'); return; }
   if (thinking || winner !== null || aiTurn() || busy()) return;
@@ -779,13 +786,37 @@ document.getElementById('undo').onclick = () => {   // back to the position befo
 
 // ---------- art ("Der Kleine Astronaut" crayon style) ----------
 const ART = {};
-const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = 'art/' + file; ART[key] = im; };
-loadArt('sheet', 'AstroAnimsheet.png'); loadArt('sheetRed', 'AstroAnimsheetRed.png');
-loadArt('shipBlue', 'AstroShipBlue.png'); loadArt('shipRed', 'AstroShipRed.png');
-loadArt('fire', 'AstroFire.png'); loadArt('expl', 'AstroExplosion.png'); loadArt('bg', 'AstroBG.png');
-loadArt('roverBlue', 'AstroRoverBlue.png'); loadArt('roverRed', 'AstroRoverRed.png'); loadArt('barrelOn', 'AstroBarrelArmed.png'); loadArt('barrelOff', 'AstroBarrelEmpty.png');
-loadArt('shield', 'AstroShield.png'); loadArt('base', 'AstroBase.png'); loadArt('shadow', 'AstroShadow.png'); loadArt('hotring', 'AstroHotRing.png');
-loadArt('bang', 'AstroBang.png'); loadArt('zzz', 'AstroZzz.png'); loadArt('glow', 'AstroGlow.png'); loadArt('hexes', 'AstroHexes.png'); loadArt('banner', 'AstroBanner.png'); loadArt('sky', 'AstroSky.png'); loadArt('beam', 'AstroBeam.png');
+// two art sets: 'space' (art/) and 'fantasy' (art/fantasy/), same file names and layout; the Theme button switches between them
+let THEME = 'space';
+try { const q = new URLSearchParams(location.search).get('theme'); THEME = q === 'fantasy' || q === 'space' ? q : (localStorage.getItem('astroTheme') === 'fantasy' ? 'fantasy' : 'space'); if (q) localStorage.setItem('astroTheme', THEME); } catch (e) {}
+const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = (THEME === 'fantasy' ? 'art/fantasy/' : 'art/') + file; ART[key] = im; };
+function loadAllArt() {
+  loadArt('sheet', 'AstroAnimsheet.png');
+  loadArt('sheetRed', 'AstroAnimsheetRed.png');
+  loadArt('shipBlue', 'AstroShipBlue.png');
+  loadArt('shipRed', 'AstroShipRed.png');
+  loadArt('fire', 'AstroFire.png');
+  loadArt('expl', 'AstroExplosion.png');
+  loadArt('bg', 'AstroBG.png');
+  loadArt('roverBlue', 'AstroRoverBlue.png');
+  loadArt('roverRed', 'AstroRoverRed.png');
+  loadArt('barrelOn', 'AstroBarrelArmed.png');
+  loadArt('barrelOff', 'AstroBarrelEmpty.png');
+  loadArt('shield', 'AstroShield.png');
+  loadArt('base', 'AstroBase.png');
+  loadArt('shadow', 'AstroShadow.png');
+  loadArt('hotring', 'AstroHotRing.png');
+  loadArt('bang', 'AstroBang.png');
+  loadArt('zzz', 'AstroZzz.png');
+  loadArt('glow', 'AstroGlow.png');
+  loadArt('hexes', 'AstroHexes.png');
+  loadArt('banner', 'AstroBanner.png');
+  loadArt('sky', 'AstroSky.png');
+  loadArt('beam', 'AstroBeam.png');
+  if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png'); else delete ART.crystal;   // the one-time fuel fires are mana crystals in the fantasy set
+  showTheme();
+}
+loadAllArt();
 const imgOk = im => im && im.complete && im.naturalWidth;
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
@@ -1040,6 +1071,13 @@ function wobblePath(ax, ay, bx, by, now, amp) {      // a line that wobbles like
 
 // astronaut sheet frames, right-facing (mirrored for left): front, 45°, profile, 135°, back
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
+// where the frames sit in each art set (the sheets of the fantasy set are laid out differently)
+const THEME_RECTS = {
+  space: { frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
+  fantasy: {"frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
+};
+function applyThemeRects() { const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco }); }
+applyThemeRects();
 function drawShield(p, cx, cy, s, vis) {            // glass dome seen from above (a picture per team and crack stage), a circle of hex size
   const L = vis ? vis.lift : 0, f = (p.owner === 1 ? 3 : 0) + Math.min(2, p.dmg || 0);
   g.save();
@@ -1062,6 +1100,7 @@ function drawStation(cx, cy, s, now) {              // the permanent fuel statio
 }
 function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one small flickering flame
   fireGlow(cx, cy, 40 * s, .34);
+  if (imgOk(ART.crystal)) { blit(ART.crystal, 0, 0, 160, 160, cx - 34 * s, cy + 32 * s - 68 * s, 68 * s, 68 * s); return; }   // fantasy: a mana crystal
   flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
 }
 function drawPiece(p, cx, cy, s, lifted, now, vis) {
@@ -1093,7 +1132,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     sprite(o === 0 ? ART.sheet : ART.sheetRed, lifted ? R.wave : FRAMES[idx], cx, by + 2 * s, 84 * s);
     g.restore();
   } else if (p.type === 'drone') {
-    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, 143, 160], cx, by + 2 * s, 76 * s);
+    sprite(o === 0 ? ART.shipBlue : ART.shipRed, R.drone, cx, by + 2 * s, 76 * s);
   } else if (p.type === 'rover') {
     const rk = s * .95 * .92;
     blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
