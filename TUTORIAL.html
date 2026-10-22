@@ -228,7 +228,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     sprite(o === 0 ? ART.sheet : ART.sheetRed, lifted ? R.wave : FRAMES[idx], cx, by + 2 * s, 84 * s);
     g.restore();
   } else if (p.type === 'drone') {
-    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, o === 0 ? 61 : 143, 160], cx, by + 2 * s, 76 * s);
+    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, 143, 160], cx, by + 2 * s, 76 * s);
   } else if (p.type === 'rover') {
     drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
     const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
@@ -380,7 +380,7 @@ const CARDS = [
   { wide: true, title: 'Core: sidestepping and resigning', pair: [
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [C(0, 0, 0), A(1, 0, 0, 1)], hl: [[-1, 0, COL.walk]], labels: [[-1, 0, 'free', -34, 12], [1, 0, 'blocked', -34, 12]] },
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [C(-3, 0, 0), ST(0, 0)], hl: [[0, 0, COL.no]], arrows: [{ path: [[-3, 0], [0, 0]] }], labels: [[0, 0, 'resign', -44, 13]] }],
-    text: '<ul><li><b>Sidestep:</b> a Core may move <b>one hex sideways</b> along its row, but only onto an <b>empty</b> hex. It can be used to dodge an astronaut that is about to reach it.</li><li><b>Resign:</b> drag your Core <b>into the central fire</b> (a special move, you are asked to confirm). The game ends at once and <b>the other side wins</b>.</li></ul>' },
+    text: '<ul><li><b>Sidestep:</b> a Core may move <b>one hex sideways</b> along its row, but only onto an <b>empty</b> hex. It can be used to dodge an astronaut that is about to reach it, <b>but once an enemy astronaut stands next to the Core, the Core can no longer move</b> (it can still resign).</li><li><b>Resign:</b> drag your Core <b>into the central fire</b> (a special move, you are asked to confirm). The game ends at once and <b>the other side wins</b>.</li></ul>' },
   { title: 'Reaching the Core wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
     text: '<p>Walk an astronaut <b>one step</b> onto the enemy Core and you win. A jump can never end on a Core, and a Core can sidestep (see below). Rovers and drones cannot win.</p>' },
   { title: 'One-time fuel fires', draw: [{ pieces: [F(1, 0), A(0, 0, 0, 0)], hl: [[1, 0, COL.refuel]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, '+1 fuel', 44, 13]] }],

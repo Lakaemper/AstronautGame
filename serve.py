@@ -5,12 +5,12 @@ Like http.server, but
   * it relays the moves of ONLINE games between two browsers (no accounts, no extra software, standard library only).
 
 How an online game works: the browsers run the same rules, so the server only keeps, per room, the list of moves and hands every new move
-to the other player. A room is created with POST /api/new (the creator gets a random colour), a friend joins with POST /api/join and gets
+to the other player. A room is created with POST /api/new (the host chooses a colour, or gets a random one, and also the piece setup and the colour that starts), a friend joins with POST /api/join and gets
 the other colour (anyone after that can only watch), moves go to POST /api/move, and GET /api/events is a Server-Sent-Events stream that
-replays the old moves and then delivers new ones live. Move order is checked by turn (Blue moves first, then they alternate).
+replays the old moves and then delivers new ones live. Move order is checked by turn (the starting colour moves first, then they alternate).
 Rooms are kept in rooms.json, so a restart of the server does not end running games; rooms older than 14 days are dropped.
 """
-import functools, http.server, json, os, secrets, socket, sys, threading, time, urllib.parse
+import functools, http.server, json, os, re, secrets, socket, sys, threading, time, urllib.parse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ROOMS_FILE = os.path.join(ROOT, 'rooms.json')
@@ -53,6 +53,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if n > 4096: raise ValueError('too big')
         return json.loads(self.rfile.read(n) or b'{}')
 
+    @staticmethod
+    def options(room):                                     # what the guest needs to build the same game (older rooms: the default game)
+        return {'setup': room.get('setup', '4111'), 'start': room.get('start', 0), 'host': room.get('host', 0)}
+
     # ---------- POST /api/new, /api/join, /api/move
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
@@ -61,24 +65,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         with cond:
             if path == '/api/new':
                 if len(rooms) >= MAX_ROOMS: return self.reply(503, {'error': 'too many games running'})
-                rid, tok, colour = secrets.token_urlsafe(5).replace('-', 'x').replace('_', 'y'), secrets.token_urlsafe(12), secrets.randbelow(2)
-                rooms[rid] = {'created': time.time(), 'moves': [], 'tokens': {tok: colour}}
-                save(); return self.reply(200, {'room': rid, 'token': tok, 'color': colour})
+                rid, tok = secrets.token_urlsafe(5).replace('-', 'x').replace('_', 'y'), secrets.token_urlsafe(12)
+                colour = data['color'] if data.get('color') in (0, 1) else secrets.randbelow(2)          # the host picks a colour, or gets a random one
+                setup = data['setup'] if re.fullmatch(r'[24][01]{3}', str(data.get('setup', ''))) else '4111'   # astronauts, rover, drone, shield
+                start = 1 if data.get('start') == 1 else 0                                                 # the colour that moves first
+                rooms[rid] = {'created': time.time(), 'moves': [], 'tokens': {tok: colour}, 'setup': setup, 'start': start, 'host': colour}
+                save(); return self.reply(200, {'room': rid, 'token': tok, 'color': colour, **self.options(rooms[rid])})
             room = rooms.get(str(data.get('room', '')))
             if room is None: return self.reply(404, {'error': 'unknown game'})
             if path == '/api/join':
                 tok = str(data.get('token') or '')
-                if tok in room['tokens']: return self.reply(200, {'token': tok, 'color': room['tokens'][tok]})
+                if tok in room['tokens']: return self.reply(200, {'token': tok, 'color': room['tokens'][tok], **self.options(room)})
                 taken = [c for c in room['tokens'].values() if c < 2]
                 colour = 1 - taken[0] if len(taken) == 1 else 2                  # the friend gets the other colour, later visitors only watch
                 tok = secrets.token_urlsafe(12)
                 if len(room['tokens']) < 60: room['tokens'][tok] = colour
-                save(); cond.notify_all(); return self.reply(200, {'token': tok, 'color': colour})
+                save(); cond.notify_all(); return self.reply(200, {'token': tok, 'color': colour, **self.options(room)})
             if path == '/api/move':
                 colour = seat_for(room, str(data.get('token') or ''))
                 sig, i = str(data.get('sig', '')), data.get('i')
                 if colour is None or colour > 1: return self.reply(403, {'error': 'you are only watching'})
-                if i != len(room['moves']) or colour != len(room['moves']) % 2 or not sig or len(sig) > 60:
+                if i != len(room['moves']) or colour != (len(room['moves']) + room.get('start', 0)) % 2 or not sig or len(sig) > 60:
                     return self.reply(409, {'error': 'out of sync', 'n': len(room['moves'])})      # not your turn, or a move was missed
                 room['moves'].append(sig); save(); cond.notify_all()
                 return self.reply(200, {'ok': True, 'n': len(room['moves'])})

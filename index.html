@@ -19,6 +19,9 @@
   #ctrl { border-collapse:collapse; margin-bottom:6px; } #ctrl th { font-weight:400; font-size:13px; color:var(--dim); padding:0 8px; } #ctrl td { padding:2px 8px; text-align:center; } #ctrl td:first-child { text-align:left; font-weight:700; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
   input.ck { appearance:none; -webkit-appearance:none; width:24px; height:24px; margin:0; border:3px solid #111; border-radius:6px; background:#fff; cursor:pointer; vertical-align:middle; display:inline-grid; place-items:center; }
   input.ck:checked { background:var(--c); box-shadow:inset 0 0 0 3px #fff; }
+  .rect { display:inline-block; width:36px; height:20px; border:3px solid #111; border-radius:5px; background:var(--c); vertical-align:middle; }
+  #starts { margin:4px 0; } #starts .sw { display:inline-block; margin:0 0 0 6px; cursor:pointer; } #starts input { position:absolute; opacity:0; pointer-events:none; }
+  #starts .rect { opacity:.35; } #starts input:checked + .rect { opacity:1; box-shadow:0 0 0 3px #fff, 0 0 0 5px #111; } #starts input:disabled + .rect { cursor:default; }
   #setup label { display:block; margin:2px 0; } #setup select { font:inherit; }
   #tutorial { align-self:flex-start; margin:0; }
   h1 { margin:0 0 8px; font-size:26px; letter-spacing:1px; color:#e8590c; -webkit-text-stroke:1.5px #111; paint-order:stroke fill; text-shadow:2px 2px 0 #111; }
@@ -50,15 +53,16 @@
 <div id="side">
   <button id="tutorial">Tutorial</button>
   <div id="setup">
-    <table id="ctrl"><tr><th></th><th>Human</th><th>AI</th></tr>
-      <tr><td style="color:var(--blue)">Blue</td><td><input type="checkbox" class="ck" id="ck0h" style="--c:var(--blue)"></td><td><input type="checkbox" class="ck" id="ck0a" style="--c:var(--blue)" checked></td></tr>
-      <tr><td style="color:var(--red)">Red</td><td><input type="checkbox" class="ck" id="ck1h" style="--c:var(--red)" checked></td><td><input type="checkbox" class="ck" id="ck1a" style="--c:var(--red)"></td></tr></table>
+    <table id="ctrl"><tr><th></th><th id="thH">Human</th><th id="thA">AI</th></tr>
+      <tr><td><span class="rect" style="--c:var(--blue)" title="Blue"></span></td><td><input type="checkbox" class="ck" id="ck0h" style="--c:var(--blue)"></td><td><input type="checkbox" class="ck" id="ck0a" style="--c:var(--blue)" checked></td></tr>
+      <tr><td><span class="rect" style="--c:var(--red)" title="Red"></span></td><td><input type="checkbox" class="ck" id="ck1h" style="--c:var(--red)" checked></td><td><input type="checkbox" class="ck" id="ck1a" style="--c:var(--red)"></td></tr></table>
+    <div id="starts">Starts <label class="sw" title="Blue starts"><input type="radio" name="start" value="0" checked><span class="rect" style="--c:var(--blue)"></span></label><label class="sw" title="Red starts"><input type="radio" name="start" value="1"><span class="rect" style="--c:var(--red)"></span></label></div>
     <label>Astronauts <select id="nAstro"><option>2</option><option selected>4</option></select></label>
     <label><input type="checkbox" id="cRover" checked> Rover</label>
     <label><input type="checkbox" id="cDrone" checked> Drone</label>
     <label><input type="checkbox" id="cShield" checked> Shield</label>
     <button id="reset">New game</button>
-    <button id="online">Online game</button>
+    <button id="online" title="Online game: tick Human on the colour you want to play (Host); your friend gets the other one. The piece setup and the starting colour are sent along.">Online game</button>
     <div id="onlineinfo"></div>
   </div>
 <div id="panel">
@@ -70,9 +74,10 @@
   <label>&nbsp; look-ahead
     <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select>
     double moves</label><br>
-  <label><input type="checkbox" id="showRanges"> Display ranges</label><br>
+  <label><input type="checkbox" id="showRanges" checked> Display ranges</label><br>
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
+  <button id="endgame">End game</button>
   <div id="aiinfo">AI search: no move computed yet.</div>
 </div>
 </div>
@@ -139,7 +144,8 @@ function legal(p) {
   const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
   if ((p.type === 'rover' || p.type === 'drone') && p.fuel < fuelCap(p) && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // vehicles refuel at the sun too (drag them onto the sun; they stay put)
   if (p.type === 'core') {                                             // a Core sidesteps one hex along its row (onto an empty hex only), or flies into the central fire = resigns
-    for (const dx of [-1, 1]) if (inB(p.x + dx, p.y) && !A(p.x + dx, p.y)) push(p.x + dx, p.y, 'walk');
+    const pinned = pieces.some(q => q.type === 'astro' && q.owner !== o && !covered(q) && hexDist(q.x, q.y, p.x, p.y) === 1);   // an enemy astronaut beside the Core: it cannot sidestep any more
+    if (!pinned) for (const dx of [-1, 1]) if (inB(p.x + dx, p.y) && !A(p.x + dx, p.y)) push(p.x + dx, p.y, 'walk');
     push(STATION.x, STATION.y, 'resign');
   } else if (p.type === 'shield') {                                           // one step to any neighbour, also onto occupied hexes (it then covers whatever stands there)
     for (const [dx, dy] of HEX6) {
@@ -504,7 +510,16 @@ let ghosts = [], animUntil = 0;                 // captured pieces still shown u
 const busy = () => performance.now() < animUntil;
 
 // the start setup (number of astronauts, rover, drone, shield) as chosen in the box; a 4-character code like 4111 travels in the link of an online game
-const setupEls = { astro: document.getElementById('nAstro'), rover: document.getElementById('cRover'), drone: document.getElementById('cDrone'), shield: document.getElementById('cShield') };
+// who starts: two colour swatches (radio buttons); startSel keeps the interface of a select (value, disabled, onchange)
+const startRadios = [...document.querySelectorAll('input[name=start]')];
+const startSel = {
+  onchange: null,
+  get value() { return startRadios.find(r => r.checked).value; },
+  set value(v) { startRadios.forEach(r => r.checked = r.value === String(v)); },
+  set disabled(d) { startRadios.forEach(r => r.disabled = d); },
+};
+startRadios.forEach(r => r.onchange = () => { if (startSel.onchange) startSel.onchange(); });
+const setupEls = { start: startSel, astro: document.getElementById('nAstro'), rover: document.getElementById('cRover'), drone: document.getElementById('cDrone'), shield: document.getElementById('cShield') };
 const setupCode = () => setupEls.astro.value + (+setupEls.rover.checked) + (+setupEls.drone.checked) + (+setupEls.shield.checked);
 function setSetup(code) {
   if (!/^[24][01]{3}$/.test(code || '')) code = '4111';
@@ -515,7 +530,7 @@ for (const el of Object.values(setupEls)) el.onchange = () => { if (!online && (
 function newGame() {
   history = []; hint = null; seen = {}; aim = null;
   anims.clear(); ghosts = []; animUntil = 0; fx.length = 0; aiPending = false; aiGen++; killWorker(); pond = null; ponderHit = null; renderInfo();
-  pieces = []; turn = 0; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
+  pieces = []; turn = +setupEls.start.value; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
   [0, 1].forEach(o => {
     const put = (type, col, row) => { const rr = o ? ROWS - 1 - row : row; add(type, o, toX(col, rr), rr); };   // Red is Blue mirrored top to bottom
     put('core', MIDC, ROWS - 1);                  // the Core between the astronauts on the back row
@@ -527,7 +542,7 @@ function newGame() {
   add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
   add('fire', 2, toX(COLS - 2, MIDC - 0), MIDC - 0);
   seen[posKey()] = 1;
-  say(started ? 'Blue moves first.' : 'Press "New game" to start.');
+  say(started ? NAME[turn] + ' moves first.' : 'Press "New game" to start.');
   updateUI();
   maybeAI();
   startPonder();
@@ -727,6 +742,8 @@ cv.addEventListener('pointerup', e => {
   draw();
 });
 cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
+// End game: drop the running game and show the fresh start position again; nothing moves until "New game" is pressed
+document.getElementById('endgame').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = false; newGame(); draw(); };
 document.getElementById('reset').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = true; newGame(); draw(); };
 document.getElementById('tutorial').onclick = () => window.open('TUTORIAL.html', '_blank');   // the illustrated rules live on their own page
 document.getElementById('suggest').onclick = () => {   // best move for the side to move, using the same search as the AI
@@ -1227,7 +1244,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     sprite(o === 0 ? ART.sheet : ART.sheetRed, lifted ? R.wave : FRAMES[idx], cx, by + 2 * s, 84 * s);
     g.restore();
   } else if (p.type === 'drone') {
-    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, o === 0 ? 61 : 143, 160], cx, by + 2 * s, 76 * s);
+    sprite(o === 0 ? ART.shipBlue : ART.shipRed, [0, 0, 143, 160], cx, by + 2 * s, 76 * s);
   } else if (p.type === 'rover') {
     drawRover(cx, by + 2 * s, s * .95, o === 0 ? '#4aa3f0' : '#f0646f');
     const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
@@ -1279,7 +1296,8 @@ const roleSel = {
 ck.forEach((row, side) => row.forEach((c, k) => c.onchange = () => { c.checked = true; row[1 - k].checked = false; if (roleSel.onchange) roleSel.onchange(); }));   // exactly one tick per row
 const aiDepth = document.getElementById('depth');
 
-const aiPlays = side => roleSel.value === 'none' || (roleSel.value === 'red' && side === 0) || (roleSel.value === 'blue' && side === 1);
+let aiOff = false;                                 // online: both sides are humans, whatever the table shows (it shows who is Host and who Guest)
+const aiPlays = side => !aiOff && (roleSel.value === 'none' || (roleSel.value === 'red' && side === 0) || (roleSel.value === 'blue' && side === 1));
 const aiTurn = () => started && winner === null && aiPlays(turn);   // 'No human': the AI moves for both sides
 roleSel.onchange = () => { killPonder(); maybeAI(); startPonder(); };
 
@@ -1320,7 +1338,7 @@ function search(side) {                            // promise of the AI's best m
   });
 }
 function startPonder() {                           // human to move against the AI: prepare answers to all their replies
-  if (!started || pond || thinking || winner !== null || aiTurn() || roleSel.value === 'none' || roleSel.value === 'two') return;
+  if (!started || pond || thinking || winner !== null || aiTurn() || aiOff || roleSel.value === 'none' || roleSel.value === 'two') return;
   let w; try { w = startWorker(); } catch (e) { return; }
   pond = { table: new Map(), replies: 0, pruned: 0, depth: 0, done: false };
   w.postMessage({ task: 'ponder', pieces: pieces.map(p => ({ ...p })), turn, winner, maxPlies: 2 * +aiDepth.value });
@@ -1388,7 +1406,7 @@ function resolveSig(sig) {                                        // find the pi
 }
 function renderOnline() {
   if (!online) { onlineInfo.style.display = 'none'; return; }
-  const me = online.color, other = 1 - me, link = location.origin + location.pathname + '?room=' + online.room + '&s=' + online.setup;
+  const me = online.color, other = 1 - me, link = location.origin + location.pathname + '?room=' + online.room;
   let html = me === 2 ? 'Online: you are watching this game.' : `Online game: you play <b style="color:${COLOR[me]}">${NAME[me]}</b>.`;
   if (!online.live) html += ' Loading the game…';
   else if (me < 2 && online.present[other]) html += ' Your friend is connected.';
@@ -1414,26 +1432,29 @@ function connectOnline() {
 }
 function leaveOnline() {
   if (online && online.es) online.es.close();
-  online = null; replaying = false; remoteMove = false;
+  online = null; replaying = false; remoteMove = false; aiOff = false;
+  document.getElementById('thH').textContent = 'Human'; document.getElementById('thA').textContent = 'AI';
   roleSel.disabled = false; for (const el of Object.values(setupEls)) el.disabled = false; for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = '';
   window.history.replaceState(null, '', location.pathname); renderOnline();
 }
-async function enterOnline(room, token, color, setup) {
-  leaveOnline(); setSetup(setup);
-  online = { room, token, color, setup: setupCode(), applied: 0, present: [false, false], live: false, hadFriend: false, es: null };
-  window.history.replaceState(null, '', '?room=' + room + '&s=' + online.setup + '#k=' + token);      // reload-safe; the secret stays in the hash and is never sent
-  roleSel.value = 'two'; roleSel.disabled = true; started = true; for (const el of Object.values(setupEls)) el.disabled = true;
+async function enterOnline(room, token, color, setup, start, host) {   // setup, start and host (the Host's colour) come from the server: the Host chose them
+  leaveOnline(); setSetup(setup); setupEls.start.value = start ? '1' : '0';
+  online = { room, token, color, applied: 0, present: [false, false], live: false, hadFriend: false, es: null };
+  window.history.replaceState(null, '', '?room=' + room + '#k=' + token);      // reload-safe; the secret stays in the hash and is never sent
+  roleSel.value = host === 1 ? 'red' : 'blue'; roleSel.disabled = true; aiOff = true; started = true;   // the table now shows the Host's colour in the first column, the Guest's in the second
+  document.getElementById('thH').textContent = 'Host'; document.getElementById('thA').textContent = 'Guest';
+  for (const el of Object.values(setupEls)) el.disabled = true;
   for (const id of ['undo', 'suggest']) document.getElementById(id).style.display = 'none';
   replaying = true; newGame(); renderOnline(); connectOnline();
 }
 document.getElementById('online').onclick = async () => {
   if (online && !confirm('Leave this online game and open a new one?')) return;
-  try { const r = await api('new', {}); await enterOnline(r.room, r.token, r.color, setupCode()); } catch (e) { say('Could not start an online game: ' + e.message); }
+  try { const h = roleSel.value, r = await api('new', { setup: setupCode(), start: +startSel.value, color: h === 'blue' ? 0 : h === 'red' ? 1 : null }); await enterOnline(r.room, r.token, r.color, r.setup, r.start, r.host); } catch (e) { say('Could not start an online game: ' + e.message); }
 };
 
 newGame(); draw();
 { const room = new URLSearchParams(location.search).get('room'), key = (location.hash.match(/k=([\w-]+)/) || [])[1];   // opened an invitation link
-  if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color, new URLSearchParams(location.search).get('s'))).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
+  if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color, r.setup, r.start, r.host)).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
 if (typeof window !== 'undefined') setInterval(() => { if (!looping && pieces) draw(); }, 50);
 </script>
 </body>
