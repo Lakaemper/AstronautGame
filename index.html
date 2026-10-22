@@ -153,7 +153,7 @@ function legal(p) {
         if (!inB(x, y) || isStation(x, y)) break;
         const t = A(x, y);
         if (!t) { push(x, y, 'walk'); continue; }
-        if (s > 1) break;                                             // the double step is a plain move: it cannot capture or slip under a shield
+        if (s > 1) { if (t.owner !== o && !fixed(t)) push(x, y, 'capture'); break; }   // the double step may capture an enemy on the second hex (the first hex had to be free), but cannot slip under a shield; a shield or a Core is never captured
         if (freeShield(t, o)) { push(x, y, 'walk'); break; }          // may move under its own shield, but not past it
         if (t.owner !== o && !fixed(t)) push(x, y, 'capture');
         break;

@@ -56,8 +56,8 @@ Pieces:
   fuel can play move kind `feed` (target = the vehicle's square): astronaut +1 fuel, vehicle -1, nobody moves. A vehicle's
   fuel is only used for feeding, never for moving. Drawn as one flame beside the vehicle.
 - **Rover:** moves one hex in one of the six directions, but a rover that has never moved may take TWO hexes along a line on its
-  first move (like a chess pawn: `fresh` flag, switch `ROVER_DOUBLE` in the engine block; the double step is a plain move: the first hex
-  must be free, no capture, no moving under a shield, the sun blocks it; the flag is lost with the first change of position). No jumping, captures by moving onto an enemy (not a Core). Has a
+  first move (like a chess pawn: `fresh` flag, switch `ROVER_DOUBLE` in the engine block; the first hex of the double step
+  must be free, the second hex may hold an enemy that is CAPTURED (never a shield or Core), but it cannot move under a shield, and the sun blocks it; the flag is lost with the first change of position). No jumping, captures by moving onto an enemy (not a Core). Has a
   **laser that needs fuel**: the rover starts EMPTY (fuel 0), so at the start both lasers are off (grey emitter point, no beam).
   It refuels at the sun like any piece (drag it onto the sun while next to it). It holds up to 2 units (`ROVER_FUEL`; a fire fills it, the sun gives +1 per move) and each shot costs ONE unit, so a full
   rover has two shots. With fuel the faint wobbling glow shows its aim; a shot destroys the first astronaut, drone or rover (either
