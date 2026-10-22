@@ -222,3 +222,5 @@ leaves the online game after a confirmation. Tests used: a Python script that dr
 restart persistence) and two browser tabs on this PC. Note: with plain `http.server` a browser may try `::1` first; `serve.py` now listens on both.
 
 Display ranges (UI, checkbox in the second box, off by default): `rangeBoundary()` takes, per colour, the hexes every piece of that colour can move to (`legal()` kinds walk/capture/jump/push/cover) plus the pieces' own hexes, and returns the edges where the region ends; `drawRanges()` draws them in the colour (dark underlay), an edge that bounds both colours' regions is dashed in both colours alternately. Cached by `posKey()`.
+
+Core moves (2026-10-22): a Core may sidestep one hex E/W onto an EMPTY hex (`walk`), and `resign` = drag it onto the central fire: `step` sets `winner = 1 - owner` (log text kept, not the 'reached the Core' text), the UI asks `confirm()` first. The AI never generates `resign` (skipped in `genMoves`). Because the Core can move, `evaluate()` finds it with `coreOf(owner)` instead of the constant `CORE` (which is only the start fallback).
