@@ -31,8 +31,9 @@ so without `art/` the game runs but the pieces and backgrounds are missing.
 
 ## Rules (current state)
 
-Board: a RECTANGLE of 9 x 9 pointy-top hexes (81 cells); every odd row is shifted right by half a hex, so the left and
-right edges are zig-zag. History: two 7x7 fields with wormholes -> square 9x9 -> hex rhombus -> this rectangle (2026-10-19).
+Board: 9 rows of pointy-top hexes, 77 cells: the 5 even rows have 9 hexes and the 4 odd rows (shifted right by half a hex) have 8, because the
+rightmost hex of each odd row was removed (2026-10-22) so that the right edge is almost straight; only the left edge is zig-zag. `inB` tests `col < COLS - (y & 1)`,
+the canvas width is `HW * COLS`. The board is now left-right symmetric (about the middle of the Core column); the start setup is not: the drone stands at x = 1.5 and the rover at x = 7.5 on the odd row. History: two 7x7 fields with wormholes -> square 9x9 -> hex rhombus -> this rectangle (2026-10-19).
 Engine coordinates are AXIAL with a constant shift so the six directions are the same steps everywhere: `x = column -
 floor(row/2) + AXS` (`AXS` = 4, keeps x >= 0), `y` = row. Helpers `toX(col,row)`, `colOf(x,y)`, `inB(x,y)` (rectangle test),
 `hexDist`; lookup tables are sized `XN` x `ROWS`. Owner 0 = Blue (home row 8, moves up), owner 1 = Red (home row 0, moves
@@ -89,8 +90,8 @@ Pieces:
   of the pieces (`drawShield`): seen from above (deliberately not consistent with the side-view astronauts), a circle of
   hex size at 70% opacity, rim in the team colour. Starts two rows straight in front of the Core: Blue (4,6), Red (4,2).
 - **Setup** (given as column,row): four astronauts per side (the front astronaut was removed). Blue: Core (4,8);
-  astronauts (0,8), (3,8), (5,8), (8,8); drone (1,7), rover (7,7), shield (4,6). Red is Blue mirrored top to bottom (row -> 8-row), same
-  columns: Core (4,0), astronauts (0,0), (3,0), (5,0), (8,0), drone (1,1), rover (7,1), shield (4,2). Both rovers start empty (laser off)
+  astronauts (1,8), (3,8), (5,8), (7,8) (the outer two were at columns 0 and 8 until 2026-10-22); drone (2,8), rover (6,8), shield (4,6) (back row 1..7 = A drone A Core A rover A; the four corner hexes (0,0),(8,0),(0,8),(8,8) do not exist, 73 hexes). Red is Blue mirrored top to bottom (row -> 8-row), same
+  columns: Core (4,0), astronauts (1,0), (3,0), (5,0), (7,0), drone (2,0), rover (6,0), shield (4,2). Both rovers start empty (laser off)
   with the aim pointing away from the board: Red NW (up), Blue SW (down). A pointy-top hex board has no exact north or south, so
   these two (the vertical mirror of each other) stand for it; nothing is in line at the start. Rotation by 180 degrees is NOT a symmetry (odd rows
   are shifted), the vertical mirror is.

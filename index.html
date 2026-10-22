@@ -64,7 +64,7 @@
 // Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
 let ROVER_DOUBLE = true;                       // a rover that has never moved may step two hexes along a line (like a pawn); set false for the old rule
 const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1, ROVER_FUEL = 2;   // a drone carries 1 unit, a rover 2 (one per laser shot)
-// The board is a rectangle of COLS x ROWS pointy-top hexes; every odd row is shifted right by half a hex. Positions are stored
+// The board is a rectangle of COLS x ROWS pointy-top hexes (77 cells: the shifted odd rows lose their last hex, which would stick out on the right); every odd row is shifted right by half a hex. Positions are stored
 // in axial coordinates (x = q + AXS, y = row) so that all six directions are the same constant steps everywhere:
 // x = column - floor(row / 2) + AXS. AXS keeps x >= 0 (needed for the lookup tables).
 const AXS = (ROWS - 1) >> 1, XN = COLS + AXS;
@@ -88,7 +88,7 @@ const at = (x, y) => { let r; for (const p of pieces) if (p.x === x && p.y === y
 const covered = p => p.type !== 'shield' && pieces.some(q => q.type === 'shield' && q.x === p.x && q.y === p.y);
 // an own shield with nothing under it can be entered by the owner's other pieces (they then stand under it)
 const freeShield = (t, o) => !!t && t.type === 'shield' && t.owner === o && !pieces.some(q => q !== t && q.x === t.x && q.y === t.y && q.type !== 'fire');
-const inB = (x, y) => y >= 0 && y < ROWS && colOf(x, y) >= 0 && colOf(x, y) < COLS;
+const inB = (x, y) => y >= 0 && y < ROWS && colOf(x, y) >= ((y === 0 || y === ROWS - 1) ? 1 : 0) && colOf(x, y) < COLS - (y & 1) - ((y === 0 || y === ROWS - 1) ? 1 : 0);   // the four corner hexes are cut off   // the shifted (odd) rows are one hex shorter, so the right edge is almost straight
 const isStation = (x, y) => x === STATION.x && y === STATION.y;
 const nearStation = p => hexDist(p.x, p.y, STATION.x, STATION.y) === 1;
 // How far a jetpack has to fly: the sun cannot be crossed, even in the air. Two hexes on a straight line with the sun strictly between
@@ -459,7 +459,7 @@ const cv = document.getElementById('c'), g = cv.getContext('2d');
 // pixel geometry of the hex rectangle (pointy-top hexes, axial coordinates)
 const HS = 54, HW = Math.sqrt(3) * HS, PAD = 8;     // hex size (centre to corner), hex width
 const OX = PAD + HW / 2, OY = PAD + HS;              // pixel centre of column 0 in row 0
-const W = Math.round(2 * PAD + HW * (COLS + .5)), H = Math.round(2 * PAD + 1.5 * HS * (ROWS - 1) + 2 * HS);
+const W = Math.round(2 * PAD + HW * COLS), H = Math.round(2 * PAD + 1.5 * HS * (ROWS - 1) + 2 * HS);
 const PS = HW / 100;                                 // piece scale: pieces and sprites are drawn for 100-pixel cells
 const ctrX = (x, r) => OX + HW * (x - AXS + r / 2), ctrY = r => OY + 1.5 * HS * r;   // linear, so fractional coordinates work too
 cv.width = W; cv.height = H;
@@ -484,10 +484,10 @@ function newGame() {
   [0, 1].forEach(o => {
     const put = (type, col, row) => { const rr = o ? ROWS - 1 - row : row; add(type, o, toX(col, rr), rr); };   // Red is Blue mirrored top to bottom
     put('core', MIDC, ROWS - 1);                  // the Core between four astronauts on the back row
-    [0, MIDC - 1, MIDC + 1, COLS - 1].forEach(c => put('astro', c, ROWS - 1));
+    [1, MIDC - 1, MIDC + 1, COLS - 2].forEach(c => put('astro', c, ROWS - 1));   // the four astronauts on the back row (the outer two one hex in from the edge)
     put('shield', MIDC, ROWS - 3);                // the shield stands two rows straight in front of the Core
-    put('drone', 1, ROWS - 2);                    // rover and drone one row up
-    put('rover', COLS - 2, ROWS - 2);
+    put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Core A rover A
+    put('rover', COLS - 3, ROWS - 1);
   });
   add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
   add('fire', 2, toX(COLS - 2, MIDC - 0), MIDC - 0);
@@ -895,8 +895,9 @@ function makeBoardLayer() {
   }
   if (!surfaceTiles) surfaceTiles = makeTiles();
   const pick = seeded(2024), grid = {}, tint = ['#1f5c3ecc', '#2c7451cc', '#256848cc'];
-  for (let y = 0; y < ROWS; y++) for (let col = 0; col < COLS; col++) {   // translucent hexes: visible, but the scene shows through
-    const x = toX(col, y), cx = ctrX(x, y), cy = ctrY(y), near = hexDist(x, y, STATION.x, STATION.y) === 1;
+  for (let y = 0; y < ROWS; y++) for (let col = 0; col < COLS - (y & 1); col++) {   // translucent hexes: visible, but the scene shows through (odd rows have one hex less)
+    const x = toX(col, y); if (!inB(x, y)) continue;
+    const cx = ctrX(x, y), cy = ctrY(y), near = hexDist(x, y, STATION.x, STATION.y) === 1;
     let t; do t = Math.floor(pick() * 5); while (t === grid[(x - 1) + ',' + y] || t === grid[x + ',' + (y - 1)] || t === grid[(x + 1) + ',' + (y - 1)]);   // differs from the W, NW and NE neighbour
     grid[x + ',' + y] = t;
     k.save(); hexPath(k, cx, cy, HS); k.clip();
