@@ -217,7 +217,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
   const A = (x, y) => at(x, y);
   if (m.kind === 'resign') {                        // the Core flies into the central fire: the game is over, the other side wins
     p.x = m.x; p.y = m.y; winner = 1 - p.owner;
-    text = `${NAME[p.owner]} flies its Core into the fire and resigns. ${NAME[winner]} wins!`;
+    text = `${NAME[p.owner]} flies its Home Planet into the fire and resigns. ${NAME[winner]} wins!`;
   } else if (m.kind === 'refuel') {
     p.fuel++; text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} refuels (${p.fuel}/${fuelCap(p)}).`;
   } else if (m.kind === 'feed') {                   // the astronaut takes the vehicle's fuel pack; nobody moves
@@ -297,7 +297,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
       }
     } else if (sh.dmg > 0) { if (++sh.hl > 1) { sh.dmg = 0; sh.hl = 0; } }   // moved away or never on an enemy: heals on the next move (a laser hit sets hl = -1, so one move later)
   }
-  if (winner !== null) { if (m.kind !== 'resign') text = `${NAME[winner]} reached the Core and wins!`; }
+  if (winner !== null) { if (m.kind !== 'resign') text = `${NAME[winner]} reached the Home Planet and wins!`; }
   else {
     turn = 1 - turn;
     if (!pieces.some(q => q.type === 'astro')) { winner = DRAW; text += ' No astronauts left: nobody can win.'; }
@@ -536,7 +536,7 @@ function newGame() {
     put('core', MIDC, ROWS - 1);                  // the Core between the astronauts on the back row
     (+setupEls.astro.value === 4 ? [1, MIDC - 1, MIDC + 1, COLS - 2] : [MIDC - 1, MIDC + 1]).forEach(c => put('astro', c, ROWS - 1));   // 4 astronauts on the back row (the outer two one hex in from the edge); 2: only the inner ones
     if (setupEls.shield.checked) put('shield', MIDC, ROWS - 3);                // the shield stands two rows straight in front of the Core
-    if (setupEls.drone.checked) put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Core A rover A
+    if (setupEls.drone.checked) put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Home Planet A rover A
     if (setupEls.rover.checked) put('rover', COLS - 3, ROWS - 1);
   });
   add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
@@ -736,7 +736,7 @@ cv.addEventListener('pointerup', e => {
   const c = cellOf(e), { p, moves } = drag;
   drag = null; cv.classList.remove('dragging');
   const m = moves.find(m => m.x === c.x && m.y === c.y);
-  if (m && m.kind === 'resign' && !confirm('Fly your Core into the fire and resign the game?')) { draw(); return; }
+  if (m && m.kind === 'resign' && !confirm('Fly your Home Planet into the fire and resign the game?')) { draw(); return; }
   if (m) apply(p, m);
   else if (c.x !== p.x || c.y !== p.y) say('Illegal landing. Piece returned.');
   draw();

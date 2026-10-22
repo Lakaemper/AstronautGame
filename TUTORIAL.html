@@ -41,7 +41,7 @@
   <h1>ASTRO GAME</h1>
   <div class="sub">How every piece moves</div>
   <p><a class="back" href="index.html">&larr; Back to the game</a></p>
-  <p><b>Goal:</b> walk an astronaut onto the enemy <b>Core</b> (the planet on its baseline). Each turn you move <b>one piece one time</b>; Blue moves first.
+  <p><b>Goal:</b> walk an astronaut onto the enemy <b>Home Planet</b> (on its baseline). Each turn you move <b>one piece one time</b>; Blue moves first.
      Drag a piece with the mouse and its legal squares light up; release on a lit square to move.</p>
   <p>The pictures below are drawn by the game itself, so the pieces look exactly like on the board.</p>
   <div class="key">
@@ -239,7 +239,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     paper(() => wobblyPath(circlePts(35, 0, 3.6, 8), 82, .3), armed ? '#ffd24d' : '#c4c4c4', { lw: 2, shadow: false });             // lens
     g.restore();
   } else {                                           // core: a planet
-    const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
+    const act = started && winner === null && o === turn;                    // the Home Planet of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
     if (act) g.globalAlpha *= 1 - .3 * w;
     sprite(ART.bg, o === 0 ? R.neptune : R.mars, cx, by + 3 * s + (h - 80 * s) / 2, h);
@@ -356,9 +356,9 @@ const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) fo
 
 const CARDS = [
   { wide: true, title: 'The pieces', gallery: true,
-    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover, a drone, a shield and a Core. Pieces carry <b>fuel</b>, shown as little flames next to their feet (grey = empty). The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
+    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover, a drone, a shield and a Home Planet. Pieces carry <b>fuel</b>, shown as little flames next to their feet (grey = empty). The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
   { wide: true, title: 'The start position', board: true,
-    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel, drones are full, rovers start <b>empty</b> (their laser is off, grey point) and aim away from the board. The shields stand two rows in front of the Cores.</p>' },
+    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel, drones are full, rovers start <b>empty</b> (their laser is off, grey point) and aim away from the board. The shields stand two rows in front of the Home Planets.</p>' },
 
   { title: 'Astronaut: walking', draw: [{ pieces: [A(0, 0, 0, 1)], hl: nb(0, 0).map(c => [...c, COL.walk]), labels: [[0, 0, 'free', 38, 13]] }],
     text: '<p>An astronaut can always step to any of the <b>6 neighbouring hexes</b>. One step is free and needs no fuel.</p>' },
@@ -367,7 +367,7 @@ const CARDS = [
   { title: 'Astronaut: the jetpack jump', draw: [{ w: 450, h: 390, radius: 3, pieces: [A(0, 0, 0, 2), A(1, 0, 1, 1)],
         hl: [...ring(3)].filter(c => dist([0, 0], c) >= 1 && !(c[0] === 1 && c[1] === 0)).map(c => [...c, [COL.walk, COL.jump, COL.jump2][dist([0, 0], c) - 1]]),
         arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[-1, 0, 'free', 0, 13], [-2, 0, '1 fuel', 0, 13], [-3, 0, '2 fuel', 0, 13]] }],
-    text: '<ul><li><b>Fuel is range:</b> an astronaut reaches every hex within <b>fuel + 1</b> steps (here fuel 2: up to 3 steps).</li><li>One step is free. A longer move costs <b>steps &minus; 1</b> fuel.</li><li>It <b>flies over everything</b> in the way (pieces, even shields) and may capture where it lands.</li><li>It can never land on a Core, only a single step onto it wins.</li></ul>' },
+    text: '<ul><li><b>Fuel is range:</b> an astronaut reaches every hex within <b>fuel + 1</b> steps (here fuel 2: up to 3 steps).</li><li>One step is free. A longer move costs <b>steps &minus; 1</b> fuel.</li><li>It <b>flies over everything</b> in the way (pieces, even shields) and may capture where it lands.</li><li>It can never land on a Home Planet, only a single step onto it wins.</li></ul>' },
   { title: 'The central fire cannot be crossed', draw: [{ w: 340, h: 290, radius: 2, pieces: [ST(0, 0), A(-1, 0, 0, 2)], hl: [[1, 0, COL.jump2]],
         arrows: [{ path: [[-1, 0], [0, -1], [1, -1], [1, 0]], dashed: true, color: '#35d0ff' }], labels: [[1, 0, '3 steps', 38, 13]] }],
     text: '<p>The fuel station cannot be entered, and jetpacks cannot fly over it either. The hex on the <b>far side</b> of the fire is therefore <b>3 steps</b> away, not 2: the jump has to go around, and costs 2 fuel.</p>' },
@@ -377,12 +377,12 @@ const CARDS = [
     text: '<p>An astronaut next to one of its <b>own</b> rovers or drones can drag onto it and take <b>one unit</b> of its fuel: the astronaut gets +1, the vehicle loses 1. Nobody moves. A drone has only one unit, so it is empty afterwards; a rover (up to 2) may keep one shot. A rover with no fuel left cannot fire.</p>' },
   { title: 'Overcharge: use it or lose it', draw: [{ w: 400, h: 320, radius: 2, pieces: [A(0, 0, 0, 3, { hot: 1 })], hl: [[2, 0, COL.jump], [-2, 0, COL.jump], [0, 2, COL.jump], [0, -2, COL.jump]], arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[2, 0, 'jump: safe', 40, 12]] }],
     text: '<p>An astronaut may hold the full <b>3 fuel for one move only</b>. If it is full and you do <b>not jump with it</b> (spend at least 1 fuel) on your next move, it <b>explodes</b>. A red pulsing ring and a ! warn you. Walking does not count, only a jump does.</p>' },
-  { wide: true, title: 'Core: sidestepping and resigning', pair: [
+  { wide: true, title: 'Home Planet: sidestepping and resigning', pair: [
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [C(0, 0, 0), A(1, 0, 0, 1)], hl: [[-1, 0, COL.walk]], labels: [[-1, 0, 'free', -34, 12], [1, 0, 'blocked', -34, 12]] },
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [C(-3, 0, 0), ST(0, 0)], hl: [[0, 0, COL.no]], arrows: [{ path: [[-3, 0], [0, 0]] }], labels: [[0, 0, 'resign', -44, 13]] }],
-    text: '<ul><li><b>Sidestep:</b> a Core may move <b>one hex sideways</b> along its row, but only onto an <b>empty</b> hex. It can be used to dodge an astronaut that is about to reach it, <b>but once an enemy astronaut stands next to the Core, the Core can no longer move</b> (it can still resign).</li><li><b>Resign:</b> drag your Core <b>into the central fire</b> (a special move, you are asked to confirm). The game ends at once and <b>the other side wins</b>.</li></ul>' },
-  { title: 'Reaching the Core wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
-    text: '<p>Walk an astronaut <b>one step</b> onto the enemy Core and you win. A jump can never end on a Core, and a Core can sidestep (see below). Rovers and drones cannot win.</p>' },
+    text: '<ul><li><b>Sidestep:</b> a Home Planet may move <b>one hex sideways</b> along its row, but only onto an <b>empty</b> hex. It can be used to dodge an astronaut that is about to reach it, <b>but once an enemy astronaut stands next to the Home Planet, the Home Planet can no longer move</b> (it can still resign).</li><li><b>Resign:</b> drag your Home Planet <b>into the central fire</b> (a special move, you are asked to confirm). The game ends at once and <b>the other side wins</b>.</li></ul>' },
+  { title: 'Reaching the Home Planet wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
+    text: '<p>Walk an astronaut <b>one step</b> onto the enemy Home Planet and you win. A jump can never end on a Home Planet, and a Home Planet can sidestep (see below). Rovers and drones cannot win.</p>' },
   { title: 'One-time fuel fires', draw: [{ pieces: [F(1, 0), A(0, 0, 0, 0)], hl: [[1, 0, COL.refuel]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, '+1 fuel', 44, 13]] }],
     text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), a rover is filled to 2 (two shots) and a drone to 1. Flying or shooting over a fire does nothing.</p>' },
 
@@ -393,7 +393,7 @@ const CARDS = [
   { title: 'Laser controls', compass: true,
     text: '<ul><li><b>Right-click</b> the rover: fire in the direction it points.</li><li><b>Right-drag</b> from the rover towards one of the six directions: <b>turn and fire</b> that way in a single move.</li><li>A rover without fuel can only turn.</li></ul>' },
   { title: 'What stops a laser', draw: [{ w: 450, h: 290, radius: 3, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [Rv(-3, 0, 0, 1, 0), A(1, 0, 1, 1), S(0, 0, 1, 1)], beams: [[-3, 0, -0.55, 0]], labels: [[0, 0, 'hit: cracked', 44, 12]] }],
-    text: '<p>The beam stops at the <b>central fire</b> and at a <b>Core</b> without harm. It passes over the small one-time fires. A <b>shield</b> also stops it, but the shield is <b>damaged</b>: the first hit cracks it, a second hit (before it heals) shatters it.</p>' },
+    text: '<p>The beam stops at the <b>central fire</b> and at a <b>Home Planet</b> without harm. It passes over the small one-time fires. A <b>shield</b> also stops it, but the shield is <b>damaged</b>: the first hit cracks it, a second hit (before it heals) shatters it.</p>' },
 
   { title: 'Drone: moving', draw: [{ w: 450, h: 390, radius: 3, pieces: [D(0, 0, 0, 1)], hl: lineCells(0, 0, 3).map(c => [...c, COL.walk]) }],
     text: '<p>A drone moves <b>up to 3 hexes</b> in a straight line along any of the 6 directions. It cannot jump over pieces and cannot capture by moving.</p>' },
@@ -404,15 +404,15 @@ const CARDS = [
   { wide: true, title: 'Drone: pushing off the board, into the fire or into a friend', pair: [
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1 && c[0] >= -1), pieces: [D(2, 0, 0, 1), A(-1, 0, 1, 1)], hl: [[-1, 0, COL.push]], arrows: [{ path: [[2, 0], [-1, 0]] }], booms: [[-2, 0]], labels: [[-2, 0, 'edge', -34, 12]] },
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(-3, 0, 0, 1), A(-0, 0, 1, 1), A(1, 0, 0, 1)], hl: [[0, 0, COL.push]], arrows: [{ path: [[-3, 0], [0, 0]] }], booms: [[0, 0]] }],
-    text: '<ul><li><b>Off the board:</b> if the square behind the target does not exist, the pushed piece is <b>captured</b>.</li><li><b>Into a friend:</b> if the square behind it holds one of <b>your own</b> pieces, the pushed piece is crushed and <b>captured</b>.</li><li><b>Into the central fire:</b> if the square behind the target is the central fuel station, the pushed piece falls into the fire and is <b>captured</b> (new rule).</li><li>The push is <b>not possible</b> if behind the target is a piece of the target\'s own side, a shield or a Core.</li></ul>' },
+    text: '<ul><li><b>Off the board:</b> if the square behind the target does not exist, the pushed piece is <b>captured</b>.</li><li><b>Into a friend:</b> if the square behind it holds one of <b>your own</b> pieces, the pushed piece is crushed and <b>captured</b>.</li><li><b>Into the central fire:</b> if the square behind the target is the central fuel station, the pushed piece falls into the fire and is <b>captured</b> (new rule).</li><li>The push is <b>not possible</b> if behind the target is a piece of the target\'s own side, a shield or a Home Planet.</li></ul>' },
 
   { title: 'Shield: moving and covering', draw: [{ pieces: [S(0, 0, 0)], hl: nb(0, 0).map(c => [...c, COL.cover]) }, { pieces: [A(0, 0, 0, 1), S(0, 0, 0)], labels: [[0, 0, 'covered', 44, 13]] }],
-    text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Core, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or laser) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
+    text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Home Planet, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or laser) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
   { title: 'Shield: breaking it', draw: [{ pieces: [A(0, 0, 0, 1), S(0, 0, 1, 0)], labels: [[0, 0, 'start', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 1)], labels: [[0, 0, 'cracked', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 2)], labels: [[0, 0, 'cracked twice', 46, 13]] }],
     text: '<p>A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield: after <b>one</b> of its turns the shield is <b>cracked</b> (more transparent, with cracks), after <b>two</b> it is <b>cracked twice</b> (more cracks), and after <b>three</b> it <b>shatters</b>, so the prisoner is held for three turns. A shield that has moved away heals on the next turn.</p><p>A <b>rover\'s laser</b> damages a shield too: every hit counts as one damage, but <b>two hits</b> are enough to break it (only the slow breaking from below needs three). A hit shield heals only after one further move, so the owner has exactly one turn to move it away or stop the rover before the second shot.</p>' },
 
   { wide: true, title: 'Turns, ending and helpers',
-    text: '<ul><li><b>Turn:</b> press <b>New game</b>. Blue moves first, then you alternate. Each turn is <b>one move of one piece</b>. The Core of the side to move pumps gently.</li><li><b>Win:</b> an astronaut steps onto the enemy Core, or the other side resigns by flying its Core into the central fire.</li><li><b>Draw:</b> neither side has an astronaut left, the player to move cannot move, or the same position occurs three times.</li><li><b>Online game:</b> press <b>Online game</b>, copy the link and send it to your friend. Whoever opens it plays the other colour; the colours are drawn at random. Both of you see every move live, and a dropped connection simply picks up again (reload the link). There is no undo in online games.</li><li><b>Players menu:</b> human or AI for each colour, two humans, or two AIs. <b>Suggest move</b> shows what the AI would play. <b>Undo move</b> takes back up to 4 moves.</li></ul>' },
+    text: '<ul><li><b>Turn:</b> press <b>New game</b>. Blue moves first, then you alternate. Each turn is <b>one move of one piece</b>. The Home Planet of the side to move pumps gently.</li><li><b>Win:</b> an astronaut steps onto the enemy Home Planet, or the other side resigns by flying its Home Planet into the central fire.</li><li><b>Draw:</b> neither side has an astronaut left, the player to move cannot move, or the same position occurs three times.</li><li><b>Online game:</b> press <b>Online game</b>, copy the link and send it to your friend. Whoever opens it plays the other colour; the colours are drawn at random. Both of you see every move live, and a dropped connection simply picks up again (reload the link). There is no undo in online games.</li><li><b>Players menu:</b> human or AI for each colour, two humans, or two AIs. <b>Suggest move</b> shows what the AI would play. <b>Undo move</b> takes back up to 4 moves.</li></ul>' },
 ];
 
 function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -432,7 +432,7 @@ function build() {
 function galleryDraw(cv) {
   const items = [
     ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Rover', [Rv(0, 0, 0, 1, 1), Rv(0, 0, 1, 0, 2)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
-    ['Shield', [S(0, 0, 0), S(0, 0, 1)], 2], ['Core', [C(0, 0, 0), C(0, 0, 1)], 2], ['Fire', [F(0, 0), ST(0, 0)], 2]];
+    ['Shield', [S(0, 0, 0), S(0, 0, 1)], 2], ['Home Planet', [C(0, 0, 0), C(0, 0, 1)], 2], ['Fire', [F(0, 0), ST(0, 0)], 2]];
   const cw = 126, w = cw * items.length + 20, h = 200, dpr = 2;
   cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';
   g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);

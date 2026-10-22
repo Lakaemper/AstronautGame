@@ -33,7 +33,7 @@ so without `art/` the game runs but the pieces and backgrounds are missing.
 
 Board: 9 rows of pointy-top hexes, 77 cells: the 5 even rows have 9 hexes and the 4 odd rows (shifted right by half a hex) have 8, because the
 rightmost hex of each odd row was removed (2026-10-22) so that the right edge is almost straight; only the left edge is zig-zag. `inB` tests `col < COLS - (y & 1)`,
-the canvas width is `HW * COLS`. The board is now left-right symmetric (about the middle of the Core column); the start setup is not: the drone stands at x = 1.5 and the rover at x = 7.5 on the odd row. History: two 7x7 fields with wormholes -> square 9x9 -> hex rhombus -> this rectangle (2026-10-19).
+the canvas width is `HW * COLS`. The board is now left-right symmetric (about the middle of the Home Planet column); the start setup is not: the drone stands at x = 1.5 and the rover at x = 7.5 on the odd row. History: two 7x7 fields with wormholes -> square 9x9 -> hex rhombus -> this rectangle (2026-10-19).
 Engine coordinates are AXIAL with a constant shift so the six directions are the same steps everywhere: `x = column -
 floor(row/2) + AXS` (`AXS` = 4, keeps x >= 0), `y` = row. Helpers `toX(col,row)`, `colOf(x,y)`, `inB(x,y)` (rectangle test),
 `hexDist`; lookup tables are sized `XN` x `ROWS`. Owner 0 = Blue (home row 8, moves up), owner 1 = Red (home row 0, moves
@@ -43,8 +43,8 @@ The six directions `HEX6` are E, NE, NW, W, SW, SE (screen angle = -60 degrees x
 Pieces:
 - **Astronaut:** fuel is range. It can reach every hex within `fuel + 1` steps (hex distance): 0 fuel = the 6 neighbours,
   3 fuel = up to 4 steps. A 1-step move ('walk', or 'capture' on an enemy) is free; a longer move ('jump', carries `cost`)
-  flies over everything except the sun (the sun cannot be crossed even in the air, see `flyDist`: two hexes on a straight line with the sun strictly between them are one step further apart, so the far side is 3 away, not 2), costs distance - 1 fuel, may capture where it lands, and can never land on a Core, so only a
-  single step onto the enemy Core wins. Cannot land on own pieces or the sun. Fuel max 3 (`MAXFUEL`), start 1
+  flies over everything except the sun (the sun cannot be crossed even in the air, see `flyDist`: two hexes on a straight line with the sun strictly between them are one step further apart, so the far side is 3 away, not 2), costs distance - 1 fuel, may capture where it lands, and can never land on a Home Planet, so only a
+  single step onto the enemy Home Planet wins. Cannot land on own pieces or the sun. Fuel max 3 (`MAXFUEL`), start 1
   (`START_FUEL`). Refuels by 1 when next to the sun (drag it onto the sun; 6 neighbours) and spending the move.
   **Overcharge:** an astronaut may hold the full fuel (3) for one move only. The move that fills it up marks it `hot`; on its
   side's next move it must spend a charge by jumping (`kind` jump, cost >= 1) or it explodes (it is simply removed, no blast
@@ -58,11 +58,11 @@ Pieces:
   fuel is only used for feeding, never for moving. Drawn as one flame beside the vehicle.
 - **Rover:** moves one hex in one of the six directions, but a rover that has never moved may take TWO hexes along a line on its
   first move (like a chess pawn: `fresh` flag, switch `ROVER_DOUBLE` in the engine block; the first hex of the double step
-  must be free, the second hex may hold an enemy that is CAPTURED (never a shield or Core), but it cannot move under a shield, and the sun blocks it; the flag is lost with the first change of position). No jumping, captures by moving onto an enemy (not a Core). Has a
+  must be free, the second hex may hold an enemy that is CAPTURED (never a shield or Home Planet), but it cannot move under a shield, and the sun blocks it; the flag is lost with the first change of position). No jumping, captures by moving onto an enemy (not a Home Planet). Has a
   **laser that needs fuel**: the rover starts EMPTY (fuel 0), so at the start both lasers are off (grey emitter point, no beam).
   It refuels at the sun like any piece (drag it onto the sun while next to it). It holds up to 2 units (`ROVER_FUEL`; a fire fills it, the sun gives +1 per move) and each shot costs ONE unit, so a full
   rover has two shots. With fuel the faint wobbling glow shows its aim; a shot destroys the first astronaut, drone or rover (either
-  side, including own) in line, stops at the sun and Cores, and the shooter stays intact, so in a rover duel the first to shoot wins.
+  side, including own) in line, stops at the sun and Home Planets, and the shooter stays intact, so in a rover duel the first to shoot wins.
   **Turning and shooting is one move** (the old separate `aim` move is gone from `legal()`; the rover turns to the target and fires,
   `step` sets `dir` from the move). Only a rover without fuel can still just turn (right-drag, kind `aim`, human only). A shot at an
   ENEMY SHIELD is a legal move too (kind `laser`, target = the shield's hex): the beam stops at a shield and damages it (`beamTrace`
@@ -72,9 +72,9 @@ Pieces:
 - **Drone:** moves up to 3 hexes along any of the six lines, no jumping, cannot capture by moving. Dropping it on an enemy
   in range pushes that piece one square further along the line and the drone takes its square. The pushed piece is
   stunned for its next turn. Pushed off the board, into the central fire (rule added 2026-10-22), or into one of the drone owner's own pieces = captured. Blocked if
-  behind the target is a piece of the target's own side or a Core. Cores cannot be pushed.
+  behind the target is a piece of the target's own side or a Home Planet. Home Planets cannot be pushed.
 - **Shield** (type `shield`, one per side, glass half-sphere): moves one hex to any of the 6 neighbours (never the sun), also
-  onto occupied hexes of either side, except Cores and other shields (move kind `cover`; it never captures). `at(x,y)` returns the shield instead of
+  onto occupied hexes of either side, except Home Planets and other shields (move kind `cover`; it never captures). `at(x,y)` returns the shield instead of
   whatever stands under it, so a covered piece is invisible to captures, pushes, drone landings and laser hits (fully
   protected), and `covered(p)` pieces have no legal moves at all (no walking, laser or feeding) until the shield moves
   away. A shield cannot be captured, pushed, landed on or entered by any piece (`fixed(t)` includes it); a laser beam
@@ -88,15 +88,15 @@ Pieces:
   and sets `hl = -1`, so the shield only heals after one more move than usual; the owner gets exactly one reply to move the shield away
   (or to stop the rover) before a second shot would break it. Evaluation: a cracked shield is worth 15 less per damage point. It does not need fuel. Evaluation value 40. Drawn last, on top
   of the pieces (`drawShield`): seen from above (deliberately not consistent with the side-view astronauts), a circle of
-  hex size at 70% opacity, rim in the team colour. Starts two rows straight in front of the Core: Blue (4,6), Red (4,2).
-- **Setup** (given as column,row): four astronauts per side (the front astronaut was removed). Blue: Core (4,8);
-  astronauts (1,8), (3,8), (5,8), (7,8) (the outer two were at columns 0 and 8 until 2026-10-22); drone (2,8), rover (6,8), shield (4,6) (back row 1..7 = A drone A Core A rover A; the four corner hexes (0,0),(8,0),(0,8),(8,8) do not exist, 73 hexes). Red is Blue mirrored top to bottom (row -> 8-row), same
-  columns: Core (4,0), astronauts (1,0), (3,0), (5,0), (7,0), drone (2,0), rover (6,0), shield (4,2). Both rovers start empty (laser off)
+  hex size at 70% opacity, rim in the team colour. Starts two rows straight in front of the Home Planet: Blue (4,6), Red (4,2).
+- **Setup** (given as column,row): four astronauts per side (the front astronaut was removed). Blue: Home Planet (4,8);
+  astronauts (1,8), (3,8), (5,8), (7,8) (the outer two were at columns 0 and 8 until 2026-10-22); drone (2,8), rover (6,8), shield (4,6) (back row 1..7 = A drone A Home Planet A rover A; the four corner hexes (0,0),(8,0),(0,8),(8,8) do not exist, 73 hexes). Red is Blue mirrored top to bottom (row -> 8-row), same
+  columns: Home Planet (4,0), astronauts (1,0), (3,0), (5,0), (7,0), drone (2,0), rover (6,0), shield (4,2). Both rovers start empty (laser off)
 Start setup box (UI, right of the board): Blue/Red x Human/AI tick table (replaces the old Players select; `roleSel` is a shim with the old values red/blue/none/two), astronauts 2 or 4 (2 = only the inner ones), rover/drone/shield checkboxes; applied by "New game". For online games the choice travels in the link as `&s=4111` (astronauts, rover, drone, shield) and locks the box.
   with the aim pointing away from the board: Red NW (up), Blue SW (down). A pointy-top hex board has no exact north or south, so
   these two (the vertical mirror of each other) stand for it; nothing is in line at the start. Rotation by 180 degrees is NOT a symmetry (odd rows
   are shifted), the vertical mirror is.
-- **Winning:** walk an astronaut onto the enemy Core. Rovers and drones can never win.
+- **Winning:** walk an astronaut onto the enemy Home Planet. Rovers and drones can never win.
 - **Draws:** neither side has an astronaut left, the player to move has no legal move, or threefold repetition.
 - "Undo move" takes back the last single move, for either colour, up to 4 moves deep (`UNDO_DEPTH`). It also switches the
   players dropdown to "Two humans" so the AI does not immediately replay.
@@ -142,8 +142,8 @@ Moves a human can make that `legal()` never generates (firing or aiming a laser 
 
 ## AI evaluation (positive = good for Blue)
 
-Per astronaut: 100 + 14 per fuel + 16 per row advanced + closeness to the enemy Core (5 per step within 8) + 150 when one
-step from the Core; a rover is 45 (+40 if its laser still works); a drone is 40. A draw scores -600 for the side
+Per astronaut: 100 + 14 per fuel + 16 per row advanced + closeness to the enemy Home Planet (5 per step within 8) + 150 when one
+step from the Home Planet; a rover is 45 (+40 if its laser still works); a drone is 40. A draw scores -600 for the side
 searching. These weights were retuned only superficially after the 9x9 change (3 quick depth-2 self-play games: two
 repetition draws, one Blue win), so treat them as a starting point; the old tuning was for the two-field game.
 
@@ -151,7 +151,7 @@ repetition draws, one Blue win), so treat them as a starting point; the old tuni
 
 No test files in the repo. The approach used: extract the `<script>` body, stub `document`, `Image`, `performance` etc.,
 `eval` it in Node, and drive `newGame`, `legal`, `apply`, `aiSearch(side)` directly (self-play, unit checks of
-`beamTrace`, Core-capture rules). Visual checks were done by serving the folder with `python -m http.server`
+`beamTrace`, Home Planet-capture rules). Visual checks were done by serving the folder with `python -m http.server`
 and loading it in a browser. A freezing trick for animations: override `performance.now` to a fixed value, then `draw()`.
 
 ## Working preferences (from the user)
@@ -202,7 +202,7 @@ swept wings and two engine pods, 34.5 mm tall). Every piece stands on a flat rou
 miniature base: 25 mm for Medium and Small creatures, and 3D-printed bases are most often about 4 mm thick). Curves use 64 segments (`SEG`).
 Run `python make_models.py [scale]` to regenerate the STL files and `preview.html` (an offline viewer: drag to rotate, wheel to zoom).
 Each STL is a union of closed overlapping solids (slicers merge them). Earlier versions also had the Blue rocket drone, the shield dome, the two
-Cores and the two fires (24 mm bases); they were dropped on request and can be rebuilt from the git history.
+Home Planets and the two fires (24 mm bases); they were dropped on request and can be rebuilt from the git history.
 
 ## Online play for two humans (2026-10-21)
 
@@ -223,10 +223,10 @@ restart persistence) and two browser tabs on this PC. Note: with plain `http.ser
 
 Display ranges (UI, checkbox in the second box, on by default): `rangeBoundary()` takes, per colour, the hexes every piece of that colour can move to (`legal()` kinds walk/capture/jump/push/cover) plus the pieces' own hexes, and returns the edges where the region ends; `drawRanges()` draws them in the colour (dark underlay), an edge that bounds both colours' regions is dashed in both colours alternately. Cached by `posKey()`.
 
-Core moves (2026-10-22): a Core may sidestep one hex E/W onto an EMPTY hex (`walk`), and `resign` = drag it onto the central fire: `step` sets `winner = 1 - owner` (log text kept, not the 'reached the Core' text), the UI asks `confirm()` first. The AI never generates `resign` (skipped in `genMoves`). Because the Core can move, `evaluate()` finds it with `coreOf(owner)` instead of the constant `CORE` (which is only the start fallback).
+Home Planet moves (2026-10-22): a Home Planet may sidestep one hex E/W onto an EMPTY hex (`walk`), and `resign` = drag it onto the central fire: `step` sets `winner = 1 - owner` (log text kept, not the 'reached the Home Planet' text), the UI asks `confirm()` first. The AI never generates `resign` (skipped in `genMoves`). Because the Home Planet can move, `evaluate()` finds it with `coreOf(owner)` instead of the constant `CORE` (which is only the start fallback).
 
 Start colour selector (setup box, `startSel`, Blue default): `newGame()` sets `turn` from it. Online games always start with Blue (the selector is set to Blue and locked), because serve.py checks move order by parity (Blue = even moves).
 
 Online options (2026-10-22): the HOST's choices travel through the server, not the link. `POST /api/new {setup:'4111', start:0|1, color:0|1|null}` (setup = astronauts, rover, drone, shield; color = the colour the host plays, null = random) is stored in the room; `/api/new` and `/api/join` answer with `setup`, `start`, `host`, and `/api/move` checks turn order as `(moves + start) % 2`. In the UI the first Human column of the table means Host when pressing 'Online game' (tick Human on the colour you want; 'two'/'none' = random colour); online the headers read Host/Guest and the table shows the host's colour. Online `aiOff = true` keeps the AI out. serve.py must be restarted when deployed; a new client with an old server would play the default game.
 
-A Core cannot sidestep while an enemy astronaut (not covered by a shield) stands on one of its 6 neighbour hexes ('pinned' in `legal()`); resigning stays possible.
+A Home Planet cannot sidestep while an enemy astronaut (not covered by a shield) stands on one of its 6 neighbour hexes ('pinned' in `legal()`); resigning stays possible.
