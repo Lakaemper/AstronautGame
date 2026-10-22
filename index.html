@@ -70,6 +70,7 @@
   <label>&nbsp; look-ahead
     <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select>
     double moves</label><br>
+  <label><input type="checkbox" id="showRanges"> Display ranges</label><br>
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
   <div id="aiinfo">AI search: no move computed yet.</div>
@@ -191,7 +192,7 @@ function legal(p) {
         if (t.owner !== o && !fixed(t)) {                     // glide up to the enemy, then push it
           const bx = x + dx, by = y + dy;
           const b = inB(bx, by) && A(bx, by);                          // piece behind the target, if any
-          if (!inB(bx, by) || (!isStation(bx, by) && (!b || (b.owner === o && !fixed(b)))))   // blocked by the target's own side; the drone's own pieces crush it
+          if (!inB(bx, by) || isStation(bx, by) || !b || (b.owner === o && !fixed(b)))   // blocked by the target's own side; the drone's own pieces crush it; into the central fire it burns up
             push(x, y, 'push', { dx, dy });
         }
         break;
@@ -230,7 +231,8 @@ function step(p, m) {                              // mutates pieces/turn/winner
   } else if (m.kind === 'push') {
     const t = A(m.x, m.y), bx = m.x + m.dx, by = m.y + m.dy;
     p.x = m.x; p.y = m.y;                             // drone takes the pushed piece's square
-    if (inB(bx, by) && !A(bx, by)) { t.x = bx; t.y = by; t.st = 1; text = `${NAME[p.owner]} drone pushes ${what(t)}.`; }
+    if (isStation(bx, by)) { pieces.splice(pieces.indexOf(t), 1); text = `${NAME[p.owner]} drone pushes ${what(t)} into the central fire!`; }
+    else if (inB(bx, by) && !A(bx, by)) { t.x = bx; t.y = by; t.st = 1; text = `${NAME[p.owner]} drone pushes ${what(t)}.`; }
     else if (inB(bx, by)) { pieces.splice(pieces.indexOf(t), 1); text = `${NAME[p.owner]} drone crushes ${what(t)} against a ${NAME[p.owner]} piece!`; }
     else { pieces.splice(pieces.indexOf(t), 1); text = `${NAME[p.owner]} drone pushes ${what(t)} off the board!`; }
   } else if (p.type === 'shield') {                 // never captures: it just moves, and covers a piece that stands there
@@ -278,7 +280,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
     if (c && c.owner !== sh.owner) {
       sh.hl = 0;
       if (c.owner === turn) {                                       // the covered piece's side has just used a turn without freeing it
-        if (++sh.dmg >= 2) { pieces.splice(pieces.indexOf(sh), 1); text += ' The shield shatters!'; }
+        if (++sh.dmg >= 3) { pieces.splice(pieces.indexOf(sh), 1); text += ' The shield shatters!'; }
         else text += ' The shield cracks!';
       }
     } else if (sh.dmg > 0) { if (++sh.hl > 1) { sh.dmg = 0; sh.hl = 0; } }   // moved away or never on an enemy: heals on the next move (a laser hit sets hl = -1, so one move later)
@@ -600,7 +602,7 @@ function animate(p, m, before, pos) {
       }
     } else if (m.kind === 'laser') {                            // the beam hits at once
       fx.push({ x: o.x, y: o.y, t0: now }); until = Math.max(until, FX_MS);
-    } else if (m.kind === 'push' && !inB(m.x + m.dx, m.y + m.dy)) {   // shoved off the board
+    } else if (m.kind === 'push' && (!inB(m.x + m.dx, m.y + m.dy) || isStation(m.x + m.dx, m.y + m.dy))) {   // shoved off the board or into the central fire
       ghosts.push({ p: q, o, until: now + tArr + 280, slide: { dx: m.dx, dy: m.dy, t0: now + tArr, d: 280 } });
       until = Math.max(until, tArr + 280);
     } else {                                                    // captured: stays until the attacker arrives, then explodes
@@ -984,10 +986,53 @@ function draw() {
 }
 
 const cxy = (q, r) => [ctrX(q, r), ctrY(r)];         // pixel centre of a (possibly fractional) axial position
+// "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes); an edge that is a boundary of both colours is dithered
+const showRanges = document.getElementById('showRanges');
+showRanges.onchange = () => draw();
+const RANGE_KINDS = { walk: 1, capture: 1, jump: 1, push: 1, cover: 1 };
+let rangeKey = '', rangeEdges = [];
+function rangeBoundary() {
+  const key = posKey(); if (key === rangeKey) return rangeEdges;
+  rangeKey = key; rangeEdges = [];
+  const id = (x, y) => x * 16 + y, reg = [new Set(), new Set()];
+  for (const p of pieces) {
+    if (p.type === 'core' || p.type === 'fire') continue;
+    const ms = legal(p).filter(m => RANGE_KINDS[m.kind]);
+    if (!ms.length) continue;
+    reg[p.owner].add(id(p.x, p.y)); for (const m of ms) reg[p.owner].add(id(m.x, m.y));
+  }
+  for (let y = 0; y < ROWS; y++) for (let col = 0; col < COLS; col++) {
+    const x = toX(col, y); if (!inB(x, y)) continue;
+    HEX6.forEach(([dx, dy], d) => {
+      const nx = x + dx, ny = y + dy; if (inB(nx, ny) && id(nx, ny) < id(x, y)) return;      // every edge once
+      const c = [0, 1].map(o => reg[o].has(id(x, y)) !== (inB(nx, ny) && reg[o].has(id(nx, ny))));
+      if (c[0] || c[1]) rangeEdges.push({ x, y, d, c });
+    });
+  }
+  return rangeEdges;
+}
+function drawRanges() {
+  const edges = rangeBoundary(); if (!edges.length) return;
+  g.save(); g.lineJoin = 'round';
+  const seg = e => {
+    const [cx, cy] = cxy(e.x, e.y), k = 5 - e.d, a0 = Math.PI / 6 + k * Math.PI / 3, a1 = a0 + Math.PI / 3;
+    g.beginPath(); g.moveTo(cx + Math.cos(a0) * HS, cy + Math.sin(a0) * HS); g.lineTo(cx + Math.cos(a1) * HS, cy + Math.sin(a1) * HS);
+  };
+  g.lineCap = 'round'; g.setLineDash([]); g.strokeStyle = '#111'; g.lineWidth = 8;
+  for (const e of edges) { seg(e); g.stroke(); }
+  g.lineCap = 'butt'; g.lineWidth = 4.5;
+  for (const e of edges) {
+    seg(e);
+    if (e.c[0] && e.c[1]) { g.setLineDash([9, 9]); g.strokeStyle = COLOR[0]; g.lineDashOffset = 0; g.stroke(); g.strokeStyle = COLOR[1]; g.lineDashOffset = 9; g.stroke(); }
+    else { g.setLineDash([]); g.strokeStyle = COLOR[e.c[0] ? 0 : 1]; g.stroke(); }
+  }
+  g.restore();
+}
 function drawField(now, vis) {
   g.save();
   g.drawImage(boardLayer, 0, 0);
   drawStation(ctrX(STATION.x, STATION.y), ctrY(STATION.y), PS, now);                       // the big fire in the middle is the fuel station
+  if (showRanges.checked) drawRanges();
 
   if (hint) {                        // suggested move: arrow + target outline
     const [x0, y0] = cxy(...hint.from), [x1, y1] = cxy(...hint.to);
@@ -1109,12 +1154,13 @@ function drawShield(p, cx, cy, s, vis) {            // glass dome seen from abov
   g.beginPath(); g.arc(cx, cy, r - 5 * s, 0, 7); g.lineWidth = 1.5 * s; g.strokeStyle = '#ffffffc0'; g.stroke();   // glass edge
   g.beginPath(); g.ellipse(cx - r * .38, cy - r * .42, r * .2, r * .11, -.7, 0, 7); g.fillStyle = '#ffffffe0'; g.fill();   // highlight
   g.beginPath(); g.arc(cx + r * .3, cy + r * .38, r * .07, 0, 7); g.fillStyle = '#ffffffa0'; g.fill();
+  const CRACKS1 = [[[-.05, -1], [.05, -.55], [-.12, -.2], [.1, .1], [0, .5], [.08, 1]], [[.1, .1], [.45, .2], [.6, .5], [.95, .55]], [[-.12, -.2], [-.5, -.1], [-.7, .25], [-1, .3]], [[.05, -.55], [.4, -.7], [.65, -.5], [.95, -.6]]], CRACKS2 = [[[-.12, -.2], [-.2, .3], [-.35, .65], [-.3, 1]], [[.1, .1], [.3, .45], [.55, .8]], [[.05, -.55], [-.3, -.75], [-.6, -.7], [-.9, -.5]]];   // the second crack stage adds more cracks
   if (p.dmg) {                                                                                           // cracks
     g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip(); g.lineJoin = 'round'; g.lineCap = 'round';
     g.globalAlpha = .95 * (vis && vis.alpha < 1 ? vis.alpha : 1);                                          // cracks stay clearly visible
     for (const [col, lw, off] of [['#ffffff', 4.6, 1.8], ['#0b1640', 2.6, 0]]) {
       g.strokeStyle = col; g.lineWidth = lw * s;
-      for (const c of [[[-.05, -1], [.05, -.55], [-.12, -.2], [.1, .1], [0, .5], [.08, 1]], [[.1, .1], [.45, .2], [.6, .5], [.95, .55]], [[-.12, -.2], [-.5, -.1], [-.7, .25], [-1, .3]], [[.05, -.55], [.4, -.7], [.65, -.5], [.95, -.6]]]) {
+      for (const c of [...CRACKS1, ...(p.dmg >= 2 ? CRACKS2 : [])]) {
         g.beginPath(); c.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](cx + (x * r) + off * s, cy + (y * r) + off * s)); g.stroke();
       }
     }

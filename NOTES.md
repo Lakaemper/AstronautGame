@@ -71,8 +71,8 @@ Pieces:
   (Earlier rules, removed: a beam hitting a rover burnt out both lasers; the rover started with fuel and always had its laser.)
 - **Drone:** moves up to 3 hexes along any of the six lines, no jumping, cannot capture by moving. Dropping it on an enemy
   in range pushes that piece one square further along the line and the drone takes its square. The pushed piece is
-  stunned for its next turn. Pushed off the board, or into one of the drone owner's own pieces = captured. Blocked if
-  behind the target is the sun, a piece of the target's own side or a Core. Cores cannot be pushed.
+  stunned for its next turn. Pushed off the board, into the central fire (rule added 2026-10-22), or into one of the drone owner's own pieces = captured. Blocked if
+  behind the target is a piece of the target's own side or a Core. Cores cannot be pushed.
 - **Shield** (type `shield`, one per side, glass half-sphere): moves one hex to any of the 6 neighbours (never the sun), also
   onto occupied hexes of either side, except Cores and other shields (move kind `cover`; it never captures). `at(x,y)` returns the shield instead of
   whatever stands under it, so a covered piece is invisible to captures, pushes, drone landings and laser hits (fully
@@ -82,7 +82,7 @@ Pieces:
   (`freeShield`; plain 'walk'/'jump' move onto the shield's hex, `step` then does not capture; rover/drone stop there and
   cannot pass through). One piece per shield; enemies never enter. Shield vs shield: no stacking.
   Damage (`dmg`, `hl` on the shield, handled at the end of `step`): a shield on an ENEMY piece gains 1 damage each time the
-  covered piece's side finishes a move (cracked: drawn more transparent with cracks), at 2 it shatters and the piece is free
+  covered piece's side finishes a move (cracked: drawn more transparent with cracks), at 2 it is cracked twice (more cracks drawn), at 3 it shatters (changed 2026-10-22 from 2: the prisoner is held one turn longer; a rover's laser still breaks it at 2 damage) and the piece is free
   (log text 'The shield shatters!'). A shield that is not on an enemy piece heals on the next move after it left (`hl` marks
   the pending heal). Hopping from one enemy piece straight to another keeps the damage. LASER damage: a rover's beam adds 1 damage
   and sets `hl = -1`, so the shield only heals after one more move than usual; the owner gets exactly one reply to move the shield away
@@ -220,3 +220,5 @@ animation. The seat key lives in the address hash (`?room=ID#k=TOKEN`), so reloa
 send is `?room=ID` without the key. Online games have no undo, no suggestions and no AI (the players menu is locked). The "New game" button
 leaves the online game after a confirmation. Tests used: a Python script that drives the server (turn order, seats, SSE, reconnect with Last-Event-ID,
 restart persistence) and two browser tabs on this PC. Note: with plain `http.server` a browser may try `::1` first; `serve.py` now listens on both.
+
+Display ranges (UI, checkbox in the second box, off by default): `rangeBoundary()` takes, per colour, the hexes every piece of that colour can move to (`legal()` kinds walk/capture/jump/push/cover) plus the pieces' own hexes, and returns the edges where the region ends; `drawRanges()` draws them in the colour (dark underlay), an edge that bounds both colours' regions is dashed in both colours alternately. Cached by `posKey()`.
