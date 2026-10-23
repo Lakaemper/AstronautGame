@@ -47,7 +47,7 @@
   <div class="key">
     <span><i style="background:#3ddc84"></i>walk</span><span><i style="background:#35d0ff"></i>jump (costs fuel)</span>
     <span><i style="background:#ff4d5e"></i>capture</span><span><i style="background:#ffa733"></i>push</span>
-    <span><i style="background:#ffe14d"></i>refuel</span><span><i style="background:#ff9de2"></i>take fuel from a vehicle</span>
+    <span><i style="background:#ffe14d"></i>refuel</span><span><i style="background:#ff9de2"></i>take fuel from the drone</span>
     <span><i style="background:#9fe3ff"></i>shield move</span>
   </div>
 </header>
@@ -77,8 +77,6 @@ loadArt('expl', 'AstroExplosion.png');
 loadArt('bg', 'AstroBG.png');
 loadArt('roverBlue', 'AstroRoverBlue.png');
 loadArt('roverRed', 'AstroRoverRed.png');
-loadArt('barrelOn', 'AstroBarrelArmed.png');
-loadArt('barrelOff', 'AstroBarrelEmpty.png');
 loadArt('shield', 'AstroShield.png');
 loadArt('base', 'AstroBase.png');
 loadArt('shadow', 'AstroShadow.png');
@@ -90,7 +88,6 @@ loadArt('tiles', 'AstroTiles.png');
 loadArt('hexes', 'AstroHexes.png');
 loadArt('banner', 'AstroBanner.png');
 loadArt('sky', 'AstroSky.png');
-loadArt('beam', 'AstroBeam.png');
 if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png');
 const imgOk = im => im && im.complete && im.naturalWidth;
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
@@ -174,8 +171,6 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   } else if (p.type === 'rover') {
     const rk = s * .95 * .92;
     blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
-    const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
-    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92); blit(armed ? ART.barrelOn : ART.barrelOff, -2, -10, 40, 20); g.restore();
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Home Planet of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -185,7 +180,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   g.filter = 'none';
   if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
   if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
-  if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
+  if (p.type !== 'core' && p.type !== 'rover') {      // fuel = little flames next to the feet (the drone has one slot; the rover needs no fuel)
     const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
@@ -205,7 +200,7 @@ const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Ma
 const off2ax = (col, row) => [col - (row - (row & 1)) / 2, row];          // board (column,row), odd rows shifted right -> local axial
 const mk = (type, owner, q, r, o = {}) => ({ type, owner, q, r, x: q + 4, y: r, fuel: type === 'astro' ? 1 : type === 'drone' ? 1 : 0, st: 0, dmg: 0, hot: 0, dir: owner ? 2 : 4, ...o });
 const A = (q, r, o, fuel, e) => mk('astro', o, q, r, { fuel, ...e });
-const Rv = (q, r, o, fuel, dir) => mk('rover', o, q, r, { fuel, dir });
+const Rv = (q, r, o) => mk('rover', o, q, r, { fuel: 0, dir: 0 });
 const D = (q, r, o, fuel = 1) => mk('drone', o, q, r, { fuel });
 const S = (q, r, o, dmg = 0) => mk('shield', o, q, r, { dmg });
 const C = (q, r, o) => mk('core', o, q, r);
@@ -239,13 +234,6 @@ function trimEnds(pts, a, b) {                       // shorten both ends so the
   const p = pts.map(q => q.slice()), mv = (from, to, d) => { const dx = to[0] - from[0], dy = to[1] - from[1], l = Math.hypot(dx, dy) || 1; return [from[0] + dx / l * d, from[1] + dy / l * d]; };
   const n = p.length; p[0] = mv(pts[0], pts[1], a); p[n - 1] = mv(pts[n - 1], pts[n - 2], b); return p;
 }
-function drawBeam(x0, y0, x1, y1) {                // the beam picture (red outside), stretched between two points: left cap, middle, right cap
-  x0 += 3; y0 += 3; x1 += 3; y1 += 3;
-  const len = Math.hypot(x1 - x0, y1 - y0), o = 512;
-  g.save(); g.translate(x0, y0); g.rotate(Math.atan2(y1 - y0, x1 - x0)); g.scale(.7, .7);
-  blit(ART.beam, o + 2, 0, 26, 80, -13, -20, 13, 40); blit(ART.beam, o + 28, 0, 456, 80, 0, -20, len / .7, 40); blit(ART.beam, o + 484, 0, 26, 80, len / .7, -20, 13, 40);
-  g.restore();
-}
 function diagram(cvs, spec) {
   const w = spec.w || 340, h = spec.h || 290, dpr = 2;
   cvs.width = w * dpr; cvs.height = h * dpr; cvs.style.width = w + 'px';
@@ -259,7 +247,6 @@ function diagram(cvs, spec) {
     const [x, y] = P(hl[0], hl[1]); hexPath(x, y, HS - 4); g.fillStyle = (hl[2] || COL.walk) + '88'; g.fill();
     g.setLineDash([8, 5]); g.lineWidth = 4.5; g.strokeStyle = '#111'; g.stroke(); g.lineWidth = 2.2; g.strokeStyle = '#fff'; g.stroke(); g.setLineDash([]);
   }
-  for (const b of spec.beams || []) { const [x0, y0] = P(b[0], b[1]), [x1, y1] = P(b[2], b[3]); drawBeam(x0, y0, x1, y1); }
   const pcs = (spec.pieces || []).slice().sort((a, b) => (a.type === 'shield') - (b.type === 'shield') || a.r - b.r || a.q - b.q);
   for (const p of pcs) {
     const [x, y] = P(p.q, p.r);
@@ -289,9 +276,9 @@ const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) fo
 
 const CARDS = [
   { wide: true, title: 'The pieces', gallery: true,
-    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover, a drone, a shield and a Home Planet. Pieces carry <b>fuel</b>, shown as little flames next to their feet (grey = empty). The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
+    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover (the power piece), a drone, a shield and a Home Planet. Astronauts and drones carry <b>fuel</b>, shown as little flames next to their feet (grey = empty); the rover needs none. The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
   { wide: true, title: 'The start position', board: true,
-    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel, drones are full, rovers start <b>empty</b> (their laser is off, grey point) and aim away from the board. The shields stand two rows in front of the Home Planets.</p>' },
+    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
 
   { title: 'Astronaut: walking', draw: [{ pieces: [A(0, 0, 0, 1)], hl: nb(0, 0).map(c => [...c, COL.walk]), labels: [[0, 0, 'free', 38, 13]] }],
     text: '<p>An astronaut can always step to any of the <b>6 neighbouring hexes</b>. One step is free and needs no fuel.</p>' },
@@ -305,9 +292,9 @@ const CARDS = [
         arrows: [{ path: [[-1, 0], [0, -1], [1, -1], [1, 0]], dashed: true, color: '#35d0ff' }], labels: [[1, 0, '3 steps', 38, 13]] }],
     text: '<p>The fuel station cannot be entered, and jetpacks cannot fly over it either. The hex on the <b>far side</b> of the fire is therefore <b>3 steps</b> away, not 2: the jump has to go around, and costs 2 fuel.</p>' },
   { title: 'Refuelling at the central fire', draw: [{ pieces: [ST(0, 0), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, '+1 fuel', 46, 13]] }],
-    text: '<p>An astronaut, rover or drone that stands <b>next to the central fire</b> refuels by being dragged <b>onto the fire</b>. It stays where it is and gets +1 fuel (astronaut: up to 3, rover: up to 2, drone: up to 1). Refuelling uses your whole move.</p>' },
-  { title: 'Taking fuel from a vehicle', draw: [{ pieces: [A(0, 0, 0, 1), Rv(1, 0, 0, 1, 4)], hl: [[1, 0, COL.feed]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, 'rover is empty after', 46, 12]] }],
-    text: '<p>An astronaut next to one of its <b>own</b> rovers or drones can drag onto it and take <b>one unit</b> of its fuel: the astronaut gets +1, the vehicle loses 1. Nobody moves. A drone has only one unit, so it is empty afterwards; a rover (up to 2) may keep one shot. A rover with no fuel left cannot fire.</p>' },
+    text: '<p>An astronaut or drone that stands <b>next to the central fire</b> refuels by being dragged <b>onto the fire</b>. It stays where it is and gets +1 fuel (astronaut: up to 3, drone: up to 1). Refuelling uses your whole move.</p>' },
+  { title: 'Taking fuel from the drone', draw: [{ pieces: [A(0, 0, 0, 1), D(1, 0, 0, 1)], hl: [[1, 0, COL.feed]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, 'drone is empty after', 46, 12]] }],
+    text: '<p>An astronaut next to its <b>own</b> drone can drag onto it and take its <b>one unit</b> of fuel: the astronaut gets +1 and the drone is empty afterwards. Nobody moves.</p>' },
   { title: 'Overcharge: use it or lose it', draw: [{ w: 400, h: 320, radius: 2, pieces: [A(0, 0, 0, 3, { hot: 1 })], hl: [[2, 0, COL.jump], [-2, 0, COL.jump], [0, 2, COL.jump], [0, -2, COL.jump]], arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[2, 0, 'jump: safe', 40, 12]] }],
     text: '<p>An astronaut may hold the full <b>3 fuel for one move only</b>. If it is full and you do <b>not jump with it</b> (spend at least 1 fuel) on your next move, it <b>explodes</b>. A red pulsing ring and a ! warn you. Walking does not count, only a jump does.</p>' },
   { wide: true, title: 'Home Planet: sidestepping and resigning', pair: [
@@ -317,28 +304,12 @@ const CARDS = [
   { title: 'Reaching the Home Planet wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
     text: '<p>Walk an astronaut <b>one step</b> onto the enemy Home Planet and you win. A jump can never end on a Home Planet, and a Home Planet can sidestep (see below). Rovers and drones cannot win.</p>' },
   { title: 'One-time fuel fires', draw: [{ pieces: [F(1, 0), A(0, 0, 0, 0)], hl: [[1, 0, COL.refuel]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, '+1 fuel', 44, 13]] }],
-    text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), a rover is filled to 2 (two shots) and a drone to 1. Flying or shooting over a fire does nothing.</p>' },
+    text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), and a drone is filled to 1. Flying over a fire does nothing, and a rover that lands on one leaves it burning.</p>' },
 
-  { title: 'Rover: moving', draw: [{ pieces: [Rv(0, 0, 0, 0, 4)], hl: [...nb(0, 0).map(c => [...c, COL.walk]), ...DIRS.map(([dq, dr]) => [2 * dq, 2 * dr, COL.jump])], labels: [[-2, 0, 'first move only', 0, 11]] }],
-    text: '<p>A rover moves <b>one hex</b> in any of the 6 directions (no jumping). It can capture by moving onto an enemy.</p><p>Its <b>very first move</b> may instead be <b>two hexes</b> along a straight line, like a chess pawn: the first hex must be free, and the second hex may hold an enemy, which is then <b>captured</b> (but it cannot slip under a shield). After its first move the rover only ever moves one hex.</p>' },
-  { title: 'Rover: the laser', draw: [{ w: 450, h: 290, radius: 3, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [Rv(-3, 0, 0, 1, 0), A(0, 0, 1, 1), D(1, 0, 1)], beams: [[-3, 0, 0, 0]], hl: [[0, 0, COL.capture]], labels: [[-3, 0, 'armed', 40, 12]] }],
-    text: '<ul><li>A rover needs <b>fuel</b> to fire: it starts empty and must refuel first (grey point = off, red band = armed).</li><li>One shot destroys the <b>first astronaut, drone or rover</b> in line, on any distance, <b>including your own pieces</b>. Pieces behind it are safe.</li><li>A rover holds up to <b>2 units</b> of fuel and every shot costs <b>one</b>, so a full rover has two shots.</li></ul>' },
-  { title: 'Laser controls', compass: true,
-    text: '<ul><li><b>Right-click</b> the rover: fire in the direction it points.</li><li><b>Right-drag</b> from the rover towards one of the six directions: <b>turn and fire</b> that way in a single move.</li><li>A rover without fuel can only turn.</li></ul>' },
-  { title: 'What stops a laser', draw: [{ w: 450, h: 290, radius: 3, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [Rv(-3, 0, 0, 1, 0), A(1, 0, 1, 1), S(0, 0, 1, 1)], beams: [[-3, 0, -0.55, 0]], labels: [[0, 0, 'hit: cracked', 44, 12]] }],
-    text: '<p>The beam stops at the <b>central fire</b> and at a <b>Home Planet</b> without harm. It passes over the small one-time fires. A <b>shield</b> also stops it, but the shield is <b>damaged</b>: the first hit cracks it, a second hit (before it heals) shatters it.</p>' },
-
-  { title: 'Drone: moving', draw: [{ w: 450, h: 390, radius: 3, pieces: [D(0, 0, 0, 1)], hl: lineCells(0, 0, 3).map(c => [...c, COL.walk]) }],
-    text: '<p>A drone moves <b>up to 3 hexes</b> in a straight line along any of the 6 directions. It cannot jump over pieces and cannot capture by moving.</p>' },
-  { wide: true, title: 'Drone: pushing', pair: [
-      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(-3, 0, 0, 1), A(0, 0, 1, 1)], hl: [[0, 0, COL.push]], arrows: [{ path: [[-3, 0], [0, 0]] }], labels: [[-1, 0, 'before', -40, 14]] },
-      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(0, 0, 0, 1), A(1, 0, 1, 1, { st: 1 })], hl: [[1, 0, COL.push]], labels: [[-1, 0, 'after', -40, 14]] }],
-    text: '<p>Drop the drone on an enemy within reach (a clear line, up to 3 hexes). The drone <b>glides up to it, pushes it one hex further</b> along the line and <b>takes its square</b>. The pushed piece is <b>stunned</b> (zzz) and cannot move on its next turn.</p>' },
-  { wide: true, title: 'Drone: pushing off the board, into the fire or into a friend', pair: [
-      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1 && c[0] >= -1), pieces: [D(2, 0, 0, 1), A(-1, 0, 1, 1)], hl: [[-1, 0, COL.push]], arrows: [{ path: [[2, 0], [-1, 0]] }], booms: [[-2, 0]], labels: [[-2, 0, 'edge', -34, 12]] },
-      { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [D(-3, 0, 0, 1), A(-0, 0, 1, 1), A(1, 0, 0, 1)], hl: [[0, 0, COL.push]], arrows: [{ path: [[-3, 0], [0, 0]] }], booms: [[0, 0]] }],
-    text: '<ul><li><b>Off the board:</b> if the square behind the target does not exist, the pushed piece is <b>captured</b>.</li><li><b>Into a friend:</b> if the square behind it holds one of <b>your own</b> pieces, the pushed piece is crushed and <b>captured</b>.</li><li><b>Into the central fire:</b> if the square behind the target is the central fuel station, the pushed piece falls into the fire and is <b>captured</b> (new rule).</li><li>The push is <b>not possible</b> if behind the target is a piece of the target\'s own side, a shield or a Home Planet.</li></ul>' },
-
+  { wide: true, title: 'Rover: the smash', pair: [
+      { w: 420, h: 300, radius: 2, pieces: [Rv(0, 0, 0), A(1, -1, 1, 1), D(2, -1, 1, 1), A(-1, 2, 1, 1), A(0, -2, 1, 1), A(3, 0, 0, 1)], hl: [[1, 0, COL.capture], [-1, 1, COL.walk], [2, 0, COL.jump]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[0, 0, 'before', 40, 12]] },
+      { w: 420, h: 300, radius: 2, pieces: [Rv(1, 0, 0), A(-1, 2, 1, 1), A(0, -2, 1, 1), A(3, 0, 0, 1)], booms: [[1, -1], [2, -1]], labels: [[1, 0, 'after', 40, 12]] }],
+    text: '<ul><li>The rover is the <b>power piece</b>. It <b>must move</b> every time you use it: <b>one hex</b> (a step) or <b>two hexes</b> (a jump that flies over everything except the central fire), in any direction.</li><li>Where it <b>lands</b>, it <b>destroys every enemy astronaut, rover and drone on the six hexes around it</b>, and an enemy standing on the landing hex itself is captured as well. It does not harm your own pieces.</li><li>It cannot land on your own pieces, on a shield or on a Home Planet, so it cannot win the game. A piece <b>under a shield</b> survives, and Home Planets and shields are never destroyed. Standing still is not an option: the power is released only by moving.</li><li>The rover has <b>no fuel</b>. When you drag it, the landing hexes that would destroy something are shown in red. Over the hex you hover, <b>little smoke clouds</b> show the six hexes around it, and the pieces that would be destroyed are marked. When the rover lands, smoke billows over all six hexes.</li></ul>' },
   { title: 'Shield: moving and covering', draw: [{ pieces: [S(0, 0, 0)], hl: nb(0, 0).map(c => [...c, COL.cover]) }, { pieces: [A(0, 0, 0, 1), S(0, 0, 0)], labels: [[0, 0, 'covered', 44, 13]] }],
     text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Home Planet, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or laser) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
   { title: 'Shield: breaking it', draw: [{ pieces: [A(0, 0, 0, 1), S(0, 0, 1, 0)], labels: [[0, 0, 'start', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 1)], labels: [[0, 0, 'cracked', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 2)], labels: [[0, 0, 'cracked twice', 46, 13]] }],
@@ -357,14 +328,13 @@ function build() {
     const pics = el('div', 'pics');
     if (c.gallery) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => galleryDraw(cv)); }
     else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.3, oy: 60, cells: boardCells(), pieces: startPieces() })); }
-    else if (c.compass) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => compassDraw(cv)); }
     else for (const spec of c.pair || c.draw || []) { const fig = el('figure'); const cv = el('canvas'); fig.appendChild(cv); pics.appendChild(fig); jobs.push(() => diagram(cv, spec)); }
     card.appendChild(pics); card.appendChild(el('div', '', c.text)); root.appendChild(card);
   }
 }
 function galleryDraw(cv) {
   const items = [
-    ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Rover', [Rv(0, 0, 0, 1, 1), Rv(0, 0, 1, 0, 2)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
+    ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Rover', [Rv(0, 0, 0), Rv(0, 0, 1)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
     ['Shield', [S(0, 0, 0), S(0, 0, 1)], 2], ['Home Planet', [C(0, 0, 0), C(0, 0, 1)], 2], ['Fire', [F(0, 0), ST(0, 0)], 2]];
   const cw = 126, w = cw * items.length + 20, h = 200, dpr = 2;
   cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';
@@ -374,15 +344,6 @@ function galleryDraw(cv) {
     ps.forEach((p, k) => { const cx = x0 + 32 + k * 60, cy = 86; if (p.type === 'station') drawStation(cx, cy, PSC * 1.0, NOW); else drawPiece(p, cx, cy, PSC * 1.0, false, NOW); });
     label(x0 + 62, 176, name, 15);
   });
-}
-function compassDraw(cv) {
-  const w = 340, h = 290, dpr = 2; cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';
-  g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#1d4a31'; g.fillRect(0, 0, w, h);
-  const cx = w / 2, cy = h / 2 + 4;
-  for (const [q, r] of ring(2)) { const x = cx + HW * (q + r / 2), y = cy + 1.5 * HS * r; hexPic(x, y, (((q - r) % 3) + 3) % 3 * 5 + ((q * 7 + r * 3) % 5 + 5) % 5); hexPic(x, y, 18); }
-  const names = ['E', 'NE', 'NW', 'W', 'SW', 'SE'];
-  DIRS.forEach(([dq, dr], i) => { const x = cx + HW * (dq * 1.55 + dr * 1.55 / 2), y = cy + 1.5 * HS * dr * 1.55; arrowLine([[cx + (x - cx) * .38, cy + (y - cy) * .38], [x, y]], { color: '#ff7b6b' }); label(cx + (x - cx) * 1.2, cy + (y - cy) * 1.2, names[i], 14); });
-  drawPiece(mk('rover', 0, 0, 0, { fuel: 1, dir: 1 }), cx, cy, PSC, false, NOW);
 }
 function renderAll() { jobs.forEach(j => j()); drawSpace(); }
 function drawSpace() {

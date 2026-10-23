@@ -84,24 +84,23 @@
 
 <script id="engine">
 // Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
-let ROVER_DOUBLE = true;                       // a rover that has never moved may step two hexes along a line (like a pawn); set false for the old rule
-const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1, ROVER_FUEL = 2;   // a drone carries 1 unit, a rover 2 (one per laser shot)
+const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1;   // a drone carries 1 unit (a rover needs no fuel)
 // The board is a rectangle of COLS x ROWS pointy-top hexes (77 cells: the shifted odd rows lose their last hex, which would stick out on the right); every odd row is shifted right by half a hex. Positions are stored
 // in axial coordinates (x = q + AXS, y = row) so that all six directions are the same constant steps everywhere:
 // x = column - floor(row / 2) + AXS. AXS keeps x >= 0 (needed for the lookup tables).
 const AXS = (ROWS - 1) >> 1, XN = COLS + AXS;
 const toX = (col, row) => col - (row >> 1) + AXS, colOf = (x, y) => x - AXS + (y >> 1);
-const MIDC = (COLS - 1) / 2;   // rovers and drones carry one unit, which they can pass to a neighbouring astronaut
+const MIDC = (COLS - 1) / 2;   // drones carry one unit, which they can pass to a neighbouring astronaut
 const HOME = [ROWS - 1, 0];                    // owner 0 = Blue (bottom row), owner 1 = Red (top row)
 const NAME = ['Blue', 'Red', 'Nobody'], COLOR = ['#2f8fe8', '#e9475a', '#6b6b6b'];
 const DRAW = 2;                                // value of `winner` when the game is drawn
-const KCOL = { walk:'#3ddc84', jump:'#35d0ff', capture:'#ff4d5e', push:'#ffa733', resign:'#ff7a33', refuel:'#ffe14d', feed:'#ff9de2', cover:'#9fe3ff' };
+const KCOL = { walk:'#3ddc84', jump:'#35d0ff', capture:'#ff4d5e', push:'#ffa733', smash:'#ff2d55', resign:'#ff7a33', refuel:'#ffe14d', feed:'#ff9de2', cover:'#9fe3ff' };
 const STATION = { x: toX(MIDC, MIDC), y: MIDC };   // the sun sits in the middle of the board
 const CORE = [{ x: toX(MIDC, ROWS - 1), y: ROWS - 1 }, { x: toX(MIDC, 0), y: 0 }];   // Blue's and Red's Core
 const fixed = t => t.type === 'core' || t.type === 'shield';   // cannot be captured, pushed or landed on
 // Hex directions in axial coordinates (pointy-top hexes).
 const HEX6 = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];   // neighbours: E, NE, NW, W, SW, SE (screen angle = -60 deg * index)
-const fuelCap = p => p.type === 'astro' ? MAXFUEL : p.type === 'rover' ? ROVER_FUEL : VEH_FUEL;   // largest tank of a piece
+const fuelCap = p => p.type === 'astro' ? MAXFUEL : p.type === 'rover' ? 0 : VEH_FUEL;   // largest tank of a piece
 const hexDist = (ax, ay, bx, by) => (Math.abs(ax - bx) + Math.abs(ay - by) + Math.abs(ax + ay - bx - by)) / 2;
 
 // A shield sits on top of a hex: at() returns it instead of whatever stands under it, so everything under a shield is invisible
@@ -123,26 +122,20 @@ function flyDist(ax, ay, bx, by) {
   return t > 0 && t < d && sx === t * ux && sy === t * uy ? d + 1 : d;
 }
 
-function beamTrace(p, dx, dy) {                    // where a laser shot from rover p stops, and what it destroys
-  let x = p.x, y = p.y;
-  for (;;) {
-    x += dx; y += dy;
-    const stop = { ex: x - dx * .5, ey: y - dy * .5, victim: null };   // beam end in axial coordinates: the edge of the blocker
-    if (!inB(x, y) || isStation(x, y)) return stop;
-    const t = at(x, y);
-    if (!t) continue;
-    if (t.type === 'drone' || t.type === 'astro' || t.type === 'rover') return { ex: x, ey: y, victim: t };
-    if (t.type === 'shield') return { ...stop, shield: t };   // a shield stops the beam and is damaged by it
-    return stop;                                     // a Core
-  }
+// The rover's power: when it lands, every enemy astronaut, rover and drone on a neighbouring hex is destroyed (a piece under a shield is safe,
+// Home Planets and shields are never destroyed). The enemy standing on the landing hex itself is captured by the move as usual.
+const SMASHABLE = { astro: 1, rover: 1, drone: 1 };
+function smashList(p, x, y) {
+  const out = [];
+  for (const [dx, dy] of HEX6) { const v = pieces.find(q => q !== p && q.x === x + dx && q.y === y + dy && q.owner !== p.owner && SMASHABLE[q.type] && !covered(q)); if (v) out.push(v); }
+  return out;
 }
-
 function legal(p) {
   const out = [], o = p.owner;
   if (p.st > 0 || covered(p)) return out;            // stunned by a drone push, or frozen under a shield (the shield has to move first)
   const A = (x, y) => at(x, y);
   const push = (x, y, kind, extra) => out.push({ x, y, kind, ...extra });
-  if ((p.type === 'rover' || p.type === 'drone') && p.fuel < fuelCap(p) && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // vehicles refuel at the sun too (drag them onto the sun; they stay put)
+  if (p.type === 'drone' && p.fuel < fuelCap(p) && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // the drone refuels at the sun too (drag them onto the sun; they stay put)
   if (p.type === 'core') {                                             // a Core sidesteps one hex along its row (onto an empty hex only), or flies into the central fire = resigns
     const pinned = pieces.some(q => q.type === 'astro' && q.owner !== o && !covered(q) && hexDist(q.x, q.y, p.x, p.y) === 1);   // an enemy astronaut beside the Core: it cannot sidestep any more
     if (!pinned) for (const dx of [-1, 1]) if (inB(p.x + dx, p.y) && !A(p.x + dx, p.y)) push(p.x + dx, p.y, 'walk');
@@ -170,26 +163,17 @@ function legal(p) {
       else if (!t || fs || !fixed(t)) push(x, y, 'jump', { cost: d - 1 });   // farther: flies over everything but the sun, costs distance - 1 fuel, may capture, never lands on a Core
     }
     if (p.fuel < MAXFUEL && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // drag the astronaut onto the sun: it stays where it is and takes fuel
-    if (p.fuel < MAXFUEL) for (const v of pieces)                      // feed: take the fuel pack of an own rover/drone in the 8-neighbourhood (the astronaut stays put)
-      if (v.owner === o && (v.type === 'rover' || v.type === 'drone') && v.fuel > 0 && !covered(v) && hexDist(v.x, v.y, p.x, p.y) === 1) push(v.x, v.y, 'feed');
-  } else if (p.type === 'rover') {
-    for (const [dx, dy] of HEX6) {
-      for (let s = 1; s <= (ROVER_DOUBLE && p.fresh ? 2 : 1); s++) {   // one hex, but a rover that has not moved yet may take two (first move only)
-        const x = p.x + dx * s, y = p.y + dy * s;
-        if (!inB(x, y) || isStation(x, y)) break;
-        const t = A(x, y);
-        if (!t) { push(x, y, 'walk'); continue; }
-        if (s > 1) { if (t.owner !== o && !fixed(t)) push(x, y, 'capture'); break; }   // the double step may capture an enemy on the second hex (the first hex had to be free), but cannot slip under a shield; a shield or a Core is never captured
-        if (freeShield(t, o)) { push(x, y, 'walk'); break; }          // may move under its own shield, but not past it
-        if (t.owner !== o && !fixed(t)) push(x, y, 'capture');
-        break;
-      }
+    if (p.fuel < MAXFUEL) for (const v of pieces)                      // feed: take the fuel pack of an own drone in the 8-neighbourhood (the astronaut stays put)
+      if (v.owner === o && v.type === 'drone' && v.fuel > 0 && !covered(v) && hexDist(v.x, v.y, p.x, p.y) === 1) push(v.x, v.y, 'feed');
+  } else if (p.type === 'rover') {                                     // the power piece (an ogre in the fantasy set): it MUST move 1 or 2 hexes (2 = a jump over everything but the sun), and where it lands it destroys all enemies around it
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const x = p.x + dx, y = p.y + dy, d = flyDist(p.x, p.y, x, y);
+      if (d < 1 || d > 2 || hexDist(0, 0, dx, dy) > 2 || !inB(x, y) || isStation(x, y)) continue;
+      const t = A(x, y), fs = freeShield(t, o);
+      if (t && !fs && (t.owner === o || fixed(t))) continue;           // an own piece, a Core or a shield cannot be landed on
+      const hit = t && !fs ? t : null, kv = (hit ? VICTIM[hit.type] : 0) + smashList(p, x, y).reduce((a, v) => a + VICTIM[v.type], 0);
+      push(x, y, kv ? 'smash' : d === 1 ? 'walk' : 'jump', { kv });
     }
-    if (p.fuel > 0) HEX6.forEach(([dx, dy]) => {     // the laser needs fuel. Turning and shooting is ONE move: the rover turns towards the target and fires
-      const tr = beamTrace(p, dx, dy);
-      if (tr.victim) push(tr.victim.x, tr.victim.y, 'laser', { dx, dy });
-      else if (tr.shield && tr.shield.owner !== o) push(tr.shield.x, tr.shield.y, 'laser', { dx, dy });   // shooting at an enemy shield damages it
-    });
   } else if (p.type === 'drone') {
     for (const [dx, dy] of HEX6) {
       for (let s = 1; s <= 3; s++) {
@@ -223,23 +207,6 @@ function step(p, m) {                              // mutates pieces/turn/winner
   } else if (m.kind === 'feed') {                   // the astronaut takes the vehicle's fuel pack; nobody moves
     const v = A(m.x, m.y); v.fuel--; p.fuel++;
     text = `${NAME[p.owner]} astronaut refuels from the ${v.type} (${p.fuel}/${MAXFUEL}).`;
-  } else if (m.kind === 'aim') {                    // turning the laser is a whole move; the shot comes later
-    p.dir = HEX6.findIndex(([a, b]) => a === m.dx && b === m.dy);
-    text = `${NAME[p.owner]} rover turns its laser.`;
-  } else if (m.kind === 'laser') {
-    p.dir = HEX6.findIndex(([a, b]) => a === m.dx && b === m.dy);
-    const tr = beamTrace(p, m.dx, m.dy), v = tr.victim;
-    p.fuel = Math.max(0, p.fuel - 1);                // one unit of fuel per shot
-    if (tr.shield) {                                 // a shield hit: it takes 1 damage (2 break it); it heals only after it has not been hit for one more move
-      const sh = tr.shield; sh.dmg++; sh.hl = -1;
-      if (sh.dmg >= 2) { pieces.splice(pieces.indexOf(sh), 1); text = `${NAME[p.owner]} rover shatters ${sh.owner === p.owner ? 'its own' : 'an enemy'} shield!`; }
-      else text = `${NAME[p.owner]} rover cracks ${sh.owner === p.owner ? 'its own' : 'an enemy'} shield.`;
-    }
-    else if (v) {                                         // the target is destroyed (a rover too, own pieces included); the shooter stays intact
-      pieces.splice(pieces.indexOf(v), 1);
-      text = `${NAME[p.owner]} rover lasers ${v.owner === p.owner ? 'its own' : 'an enemy'} ${v.type === 'astro' ? 'astronaut' : v.type}!`;
-    }
-    else text = `${NAME[p.owner]} rover fires into empty space.`;
   } else if (m.kind === 'push') {
     const t = A(m.x, m.y), bx = m.x + m.dx, by = m.y + m.dy;
     p.x = m.x; p.y = m.y;                             // drone takes the pushed piece's square
@@ -261,13 +228,19 @@ function step(p, m) {                              // mutates pieces/turn/winner
       }
       if (t.type === 'core') winner = p.owner;
     }
-    p.x = m.x; p.y = m.y; p.fresh = 0;                                // (a rover loses its double step with its first move)
-    if (m.kind === 'jump') { p.fuel -= m.cost; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
+    p.x = m.x; p.y = m.y;
+    if (m.kind === 'jump' && p.type === 'astro') { p.fuel -= m.cost; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
+    if (p.type === 'rover') {                                         // the landing: everything enemy around the rover is destroyed
+      const dead = smashList(p, p.x, p.y);
+      for (const v of dead) pieces.splice(pieces.indexOf(v), 1);
+      const n = dead.length + (t && !under ? 1 : 0);
+      if (n) text = `${NAME[p.owner]} rover lands with a crash and destroys ${n} enemy piece${n > 1 ? 's' : ''}!`;
+    }
     if (under) text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} moves under its shield.`;
   }
   // Fuel fires: the piece that lands on one uses it up and is refuelled, only that piece: an astronaut gets +1 (never more than
-  // MAXFUEL - 1, so a fire cannot overcharge it), a rover or drone is filled. A drone's glide onto a pushed enemy's hex counts as landing.
-  if ((m.kind === 'walk' || m.kind === 'capture' || m.kind === 'jump' || m.kind === 'push') && (p.type === 'astro' || p.type === 'rover' || p.type === 'drone')) {
+  // MAXFUEL - 1, so a fire cannot overcharge it), a drone is filled. A drone's glide onto a pushed enemy's hex counts as landing.
+  if ((m.kind === 'walk' || m.kind === 'capture' || m.kind === 'jump' || m.kind === 'push') && (p.type === 'astro' || p.type === 'drone')) {
     const f = pieces.find(q => q.type === 'fire' && q.x === p.x && q.y === p.y);
     if (f) {
       pieces.splice(pieces.indexOf(f), 1);
@@ -304,7 +277,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
   }
   return text;
 }
-const PRIO = { laser: 0, aim: 2, capture: 0, push: 1, jump: 2, walk: 3, cover: 3, feed: 3, refuel: 4, resign: 5 };
+const PRIO = { smash: 0, capture: 0, push: 1, jump: 2, walk: 3, cover: 3, feed: 3, refuel: 4, resign: 5 };
 const AI_MS = 10000;                                // time budget per move
 const AI_NOISE = 6;                                // random leaf-score jitter so games vary
 let aiDeadline = 0, aiNodes = 0, aiSide = 0;
@@ -340,7 +313,8 @@ function genMoves(s, ply = 0, tt = -1) {
       for (const m of legal(p)) {
         if (m.kind === 'resign') continue;                          // the AI never resigns
         let sc = 10 - 2 * PRIO[m.kind];
-        if (m.kind === 'capture' || m.kind === 'laser' || m.kind === 'push') {
+        if (m.kind === 'smash') sc += 1000 + (m.kv || 0);
+        else if (m.kind === 'capture' || m.kind === 'push') {
           const t = at(m.x, m.y);
           if (t) sc += 1000 + (t.owner === p.owner ? -2 * VICTIM[t.type] : VICTIM[t.type] - (m.kind === 'capture' ? VICTIM[p.type] / 10 : 0));
         }
@@ -358,7 +332,7 @@ function child(s, mv) {
   inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
   return c;
 }
-const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, rover: 50, armed: 35, rsun: 0, hot: 40 };   // evaluation weights (draw = score of a draw, negative = contempt)
+const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, rover: 110, armed: 0, rsun: 0, hot: 40, threat: 0, spread: 0 };   // evaluation weights (draw = score of a draw, negative = contempt)
 function evaluate(s) {                             // positive = good for Blue
   let v = 0;
   const coreOf = o => s.pieces.find(q => q.type === 'core' && q.owner === o) || CORE[o];   // a Core can sidestep
@@ -372,11 +346,23 @@ function evaluate(s) {                             // positive = good for Blue
         + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0)   // can refuel next turn
         + (toCore === 1 ? 150 : 0)                       // one step from the Core
         - (p.hot ? EV.hot : 0);                          // fully charged for a move already: it has to jump next time or it explodes
-    } else if (p.type === 'rover') x = EV.rover + (p.fuel > 0 ? EV.armed : 0) + (nearStation(p) ? 10 : 0) + (p.fuel === 0 && nearStation(p) ? EV.rsun : 0);   // an armed rover (fuel for one laser shot) is worth much more
+    } else if (p.type === 'rover') x = EV.rover;   // the power piece: a worth of its own; its threat is seen by the search (smash moves)
     else if (p.type === 'drone') x = 40;
     else if (p.type === 'shield') x = 40 - 15 * (p.dmg || 0);   // a cracked shield is worth less
-    if (p.type === 'rover' || p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
+    if (p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
     v += p.owner === 0 ? x : -x;
+  }
+  if (EV.threat || EV.spread) {                      // the rover: what it could smash from where it stands, and clumps of pieces that it could smash together
+    const rv = s.pieces.filter(q => q.type === 'rover');
+    if (rv.length) inState(s, () => {
+      if (EV.threat) for (const r of rv) { let best = 0; for (const m of legal(r)) if (m.kv > best) best = m.kv; v += (r.owner === 0 ? 1 : -1) * EV.threat * best; }
+      if (EV.spread) for (const side of [0, 1]) {
+        if (!rv.some(r => r.owner !== side)) continue;
+        const mine = s.pieces.filter(q => q.owner === side && SMASHABLE[q.type] && !covered(q));
+        let pairs = 0; for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) if (hexDist(mine[i].x, mine[i].y, mine[j].x, mine[j].y) === 1) pairs++;
+        v += (side === 0 ? -1 : 1) * EV.spread * pairs;
+      }
+    });
   }
   return v;
 }
@@ -385,8 +371,8 @@ function cutoff(mv, ply, depth) {                  // remember a move that cause
   const kl = killers[ply] || (killers[ply] = []);
   if (kl[0] !== mv.k) { kl[1] = kl[0]; kl[0] = mv.k; }
 }
-// Quiescence search: at the end of the normal search keep playing out captures and laser shots, so that a position is never
-// judged while a piece is hanging (the plain static evaluation would miss a free capture or a pending laser kill). The side to
+// Quiescence search: at the end of the normal search keep playing out captures and rover smashes, so that a position is never
+// judged while a piece is hanging (the plain static evaluation would miss a free capture or a pending smash). The side to
 // move may always "stand pat" (decline every capture). EV.qs = how many extra plies (0 = off).
 function qsearch(s, alpha, beta, ply, qd) {
   if (++aiNodes % 1024 === 0 && performance.now() > aiDeadline) throw 'timeout';
@@ -397,7 +383,7 @@ function qsearch(s, alpha, beta, ply, qd) {
   if (maxi) { if (best >= beta) return best; if (best > alpha) alpha = best; }
   else { if (best <= alpha) return best; if (best < beta) beta = best; }
   for (const mv of genMoves(s, ply)) {
-    if (mv.m.kind !== 'capture' && mv.m.kind !== 'laser') continue;
+    if (mv.m.kind !== 'capture' && mv.m.kind !== 'smash') continue;
     const c = child(s, mv);
     const v = c.winner !== null ? (c.winner === DRAW ? EV.draw : c.winner === aiSide ? 100000 - ply : ply - 100000) : qsearch(c, alpha, beta, ply + 1, qd - 1);
     if (maxi) { if (v > best) best = v; if (best > alpha) alpha = best; } else { if (v < best) best = v; if (best < beta) beta = best; }
@@ -422,7 +408,7 @@ function minimax(s, depth, alpha, beta, ply) {
   ttKey[ti] = h; ttMove[ti] = bm.k;
   return best;
 }
-const msig = (p, m) => m.kind === 'laser' || m.kind === 'aim' ? `${p.x},${p.y}>${m.kind}${m.dx},${m.dy}` : `${p.x},${p.y}>${m.x},${m.y}:${m.kind}`;   // identifies a move independent of piece indices
+const msig = (p, m) => `${p.x},${p.y}>${m.x},${m.y}:${m.kind}`;   // identifies a move independent of piece indices
 function aiSearch(side = 0, maxPlies = 14, ms = AI_MS) {
   aiSide = side;
   const root = { pieces: pieces.map(p => ({ ...p })), turn, winner };
@@ -503,7 +489,7 @@ function hexPath(ctx, cx, cy, r) {
   ctx.closePath();
 }
 const UNDO_DEPTH = 4;
-let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {}, aim = null;
+let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {};
 let started = false;                              // nothing moves (not even the AI) until the user presses "New game"
 const anims = new Map();                        // piece -> running move animation
 let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
@@ -528,7 +514,7 @@ function setSetup(code) {
 // a changed setup shows at once on the board as long as no game is running (nothing played yet, the game is over, or "New game" was not pressed yet)
 for (const el of Object.values(setupEls)) el.onchange = () => { if (!online && (!started || winner !== null || history.length === 0)) { newGame(); draw(); } };
 function newGame() {
-  history = []; hint = null; seen = {}; aim = null;
+  history = []; hint = null; seen = {};
   anims.clear(); ghosts = []; animUntil = 0; fx.length = 0; aiPending = false; aiGen++; killWorker(); pond = null; ponderHit = null; renderInfo();
   pieces = []; turn = +setupEls.start.value; winner = null; drag = null; hover = null; lastMove = null; thinking = false;
   [0, 1].forEach(o => {
@@ -604,7 +590,7 @@ function visual(p, now) {                           // where and how a piece is 
 function animate(p, m, before, pos) {
   const now = performance.now();
   let tArr = 0, until = 0;
-  const a = (m.kind === 'laser' || m.kind === 'aim') ? null : (m.kind === 'refuel' || m.kind === 'feed') ? pulseAnim(pos.get(p)) : buildAnim(p, m, pos.get(p));
+  const a = (m.kind === 'refuel' || m.kind === 'feed') ? pulseAnim(pos.get(p)) : buildAnim(p, m, pos.get(p));
   if (a) { anims.set(p, { t0: now, segs: a.segs }); tArr = a.tArrive; until = a.tEnd; }
   if (!pieces.includes(p)) {                                    // the mover itself was overcharged: it makes its move, then explodes there
     const o = pos.get(p), d = tArr || SHIFT;
@@ -623,8 +609,6 @@ function animate(p, m, before, pos) {
         anims.set(q, { t0: now, segs: [{ d: tArr, from: o, to: o, a0: 0, a1: 0, side: 1 }, { d: 170, from: o, to: { x: q.x, y: q.y }, a0: 0, a1: 0, side: 1 }] });
         until = Math.max(until, tArr + 170);
       }
-    } else if (m.kind === 'laser') {                            // the beam hits at once
-      fx.push({ x: o.x, y: o.y, t0: now }); until = Math.max(until, FX_MS);
     } else if (m.kind === 'push' && (!inB(m.x + m.dx, m.y + m.dy) || isStation(m.x + m.dx, m.y + m.dy))) {   // shoved off the board or into the central fire
       ghosts.push({ p: q, o, until: now + tArr + 280, slide: { dx: m.dx, dy: m.dy, t0: now + tArr, d: 280 } });
       until = Math.max(until, tArr + 280);
@@ -633,6 +617,8 @@ function animate(p, m, before, pos) {
       fx.push({ x: o.x, y: o.y, t0: now + tArr }); until = Math.max(until, tArr + FX_MS);
     }
   }
+  if (p.type === 'rover' && pieces.includes(p))      // the landing: a cloud of smoke on every neighbouring hex
+    for (const [dx, dy] of HEX6) { const x = p.x + dx, y = p.y + dy; if (inB(x, y) && !isStation(x, y)) fx.push({ type: 'smoke', x, y, t0: now + tArr, ms: SMOKE_MS }); until = Math.max(until, tArr + SMOKE_MS); }
   animUntil = now + until + 40;
   kick();
 }
@@ -644,10 +630,6 @@ function apply(p, m, who) {
   if (history.length > UNDO_DEPTH) history.shift();
   hint = null;
   lastMove = m.kind === 'refuel' ? [{ x: p.x, y: p.y }] : [{ x: p.x, y: p.y }, { x: m.x, y: m.y }];   // refuelling: the piece does not move
-  if (m.kind === 'laser' && !replaying) {
-    const tr = beamTrace(p, m.dx, m.dy);
-    fx.push({ type: 'beam', dx: m.dx, dy: m.dy, x0: p.x, y0: p.y, x1: tr.ex, y1: tr.ey, owner: p.owner, t0: performance.now() });
-  }
   const before = pieces.slice(), pos = new Map(before.map(q => [q, { x: q.x, y: q.y }]));
   const text = step(p, m);
   if (!replaying) animate(p, m, before, pos);
@@ -696,14 +678,8 @@ cv.addEventListener('pointerdown', e => {
   if (winner !== null || thinking || aiTurn() || busy()) return;
   const c = cellOf(e), p = inB(c.x, c.y) && at(c.x, c.y);
   if (!p || p.owner !== turn) return;
-  if (e.button === 2) {                              // right mouse: aim / fire the rover laser
-    if (p.type !== 'rover') { say('Only rovers have a laser.'); return; }
-    if (p.st > 0) { say('That rover is stunned this turn.'); return; }
-    aim = { p, x0: c.px, y0: c.py, px: c.px, py: c.py, dir: p.dir };
-    cv.setPointerCapture(e.pointerId); kick(); return;
-  }
   if (e.button !== 0) return;
-  const moves = legal(p).filter(m => m.kind !== 'laser' && m.kind !== 'aim');
+  const moves = legal(p);
   if (!moves.length) { say(p.st > 0 ? 'That piece is stunned this turn.' : 'That piece has no legal moves.'); return; }
   drag = { p, moves, px: c.px, py: c.py };
   cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
@@ -712,26 +688,9 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   const c = cellOf(e); hover = { x: c.x, y: c.y };
   if (drag) { drag.px = c.px; drag.py = c.py; }
-  if (aim) {
-    aim.px = c.px; aim.py = c.py;
-    const vx = aim.px - aim.x0, vy = aim.py - aim.y0;
-    if (Math.hypot(vx, vy) > 24) aim.dir = ((Math.round(-Math.atan2(vy, vx) / (Math.PI / 3)) % 6) + 6) % 6;   // one of the six directions
-    aim.turn = Math.hypot(vx, vy) > 24;
-  }
   draw();
 });
 cv.addEventListener('pointerup', e => {
-  if (aim) {                                         // right-drag = turn the laser (one move), right-click = fire in the current facing (one move)
-    const { p, dir, turn: dragged } = aim; aim = null;
-    if (!dragged) {
-      if (p.fuel < 1) { say('The laser has no fuel. Move the rover next to the sun and drag it onto the sun to refuel it.'); draw(); return; }
-      const [dx, dy] = HEX6[p.dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y });
-    }
-    else if (p.fuel >= 1) { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'laser', dx, dy, x: p.x, y: p.y }); }   // turn towards the dragged direction and fire, in one move
-    else if (dir === p.dir) say('The laser already points that way (and has no fuel to fire).');
-    else { const [dx, dy] = HEX6[dir]; apply(p, { kind: 'aim', dx, dy, x: p.x, y: p.y }); }   // an empty rover can only turn
-    draw(); return;
-  }
   if (!drag) return;
   const c = cellOf(e), { p, moves } = drag;
   drag = null; cv.classList.remove('dragging');
@@ -741,7 +700,7 @@ cv.addEventListener('pointerup', e => {
   else if (c.x !== p.x || c.y !== p.y) say('Illegal landing. Piece returned.');
   draw();
 });
-cv.addEventListener('pointercancel', () => { drag = null; aim = null; cv.classList.remove('dragging'); draw(); });
+cv.addEventListener('pointercancel', () => { drag = null; cv.classList.remove('dragging'); draw(); });
 // End game: drop the running game and show the fresh start position again; nothing moves until "New game" is pressed
 document.getElementById('endgame').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = false; newGame(); draw(); };
 document.getElementById('reset').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = true; newGame(); draw(); };
@@ -800,8 +759,6 @@ function loadAllArt() {
   loadArt('bg', 'AstroBG.png');
   loadArt('roverBlue', 'AstroRoverBlue.png');
   loadArt('roverRed', 'AstroRoverRed.png');
-  loadArt('barrelOn', 'AstroBarrelArmed.png');
-  loadArt('barrelOff', 'AstroBarrelEmpty.png');
   loadArt('shield', 'AstroShield.png');
   loadArt('base', 'AstroBase.png');
   loadArt('shadow', 'AstroShadow.png');
@@ -812,7 +769,6 @@ function loadAllArt() {
   loadArt('hexes', 'AstroHexes.png');
   loadArt('banner', 'AstroBanner.png');
   loadArt('sky', 'AstroSky.png');
-  loadArt('beam', 'AstroBeam.png');
   if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png'); else delete ART.crystal;   // the one-time fuel fires are mana crystals in the fantasy set
   showTheme();
 }
@@ -888,14 +844,14 @@ function redrawAll() { drawSpace(); if (pieces) draw(); }
 addEventListener('resize', drawSpace);
 
 // ---------- effects ----------
-const fx = [];                                       // capture explosions: { x, y, t0 }
-const FX_MS = 650;
+const fx = [];                                       // capture explosions { x, y, t0 } and smoke clouds { type: 'smoke', x, y, t0, ms } (the rover's landing)
+const FX_MS = 650, SMOKE_MS = 900;
 let looping = false;
 function loop() {
   const now = performance.now();
-  for (let i = fx.length - 1; i >= 0; i--) if (now - fx[i].t0 > FX_MS) fx.splice(i, 1);
+  for (let i = fx.length - 1; i >= 0; i--) if (now - fx[i].t0 > (fx[i].ms || FX_MS)) fx.splice(i, 1);
   draw();
-  if (fx.length || drag || aim || now < animUntil) requestAnimationFrame(loop); else looping = false;
+  if (fx.length || drag || now < animUntil) requestAnimationFrame(loop); else looping = false;
 }
 function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
 
@@ -914,10 +870,10 @@ function draw() {
 }
 
 const cxy = (q, r) => [ctrX(q, r), ctrY(r)];         // pixel centre of a (possibly fractional) axial position
-// "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes); an edge that is a boundary of both colours is dithered
+// "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes, and for a rover also every hex around its landing hexes: its destruction fields); an edge that is a boundary of both colours is dithered
 const showRanges = document.getElementById('showRanges');
 showRanges.onchange = () => draw();
-const RANGE_KINDS = { walk: 1, capture: 1, jump: 1, push: 1, cover: 1 };
+const RANGE_KINDS = { walk: 1, capture: 1, jump: 1, push: 1, cover: 1, smash: 1 };
 let rangeKey = '', rangeEdges = [];
 function rangeBoundary() {
   const key = posKey(); if (key === rangeKey) return rangeEdges;
@@ -928,6 +884,8 @@ function rangeBoundary() {
     const ms = legal(p).filter(m => RANGE_KINDS[m.kind]);
     if (!ms.length) continue;
     reg[p.owner].add(id(p.x, p.y)); for (const m of ms) reg[p.owner].add(id(m.x, m.y));
+    if (p.type === 'rover') for (const m of ms) for (const [dx, dy] of HEX6)      // the rover's destruction fields: every hex around each landing hex
+      if (inB(m.x + dx, m.y + dy) && !isStation(m.x + dx, m.y + dy)) reg[p.owner].add(id(m.x + dx, m.y + dy));
   }
   for (let y = 0; y < ROWS; y++) for (let col = 0; col < COLS; col++) {
     const x = toX(col, y); if (!inB(x, y)) continue;
@@ -997,22 +955,20 @@ function drawField(now, vis) {
       g.setLineDash([6, 6]); g.strokeStyle = '#111'; g.lineWidth = 6; g.stroke(); g.strokeStyle = '#9fe3ff'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
     }
   }
+  if (drag && drag.p.type === 'rover' && hover) {      // preview: everything the rover would destroy if it landed on the hovered hex
+    const m = drag.moves.find(m => m.x === hover.x && m.y === hover.y);
+    if (m) {
+      const victims = smashList(drag.p, m.x, m.y), t = at(m.x, m.y);
+      if (t && t.owner !== drag.p.owner && !fixed(t)) victims.push(t);
+      for (const v of victims) { const [x, y] = cxy(v.x, v.y); hexPath(g, x, y, HS - 6); g.fillStyle = '#ff2d5577'; g.fill(); g.setLineDash([6, 5]); g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke(); g.setLineDash([]); }
+    }
+  }
   if (drag && hover && inB(hover.x, hover.y)) {
     const [x, y] = cxy(hover.x, hover.y);
     hexPath(g, x, y, HS - 2); g.strokeStyle = '#111'; g.lineWidth = 7; g.stroke();
     g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke();
   }
 
-  for (const p of pieces) {                          // faint, wobbling glow along each rover's aim
-    if (p.type !== 'rover' || covered(p) || p.fuel < 1) continue;   // no glow for a rover frozen under a shield or without fuel (no laser)
-    const [dx, dy] = HEX6[aim && aim.p === p ? aim.dir : p.dir], tr = beamTrace(p, dx, dy), armed = aim && aim.p === p;
-    const [x0, y0, x1, y1] = beamPoints(...cxy(p.x, p.y), ...cxy(tr.ex, tr.ey));
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    wobblePath(x0, y0, x1, y1, now, armed ? 2.5 : 4);
-    g.strokeStyle = COLOR[p.owner] + (armed ? '66' : '2a'); g.lineWidth = armed ? 20 : 14; g.stroke();
-    wobblePath(x0, y0, x1, y1, now, armed ? 2.5 : 4);
-    g.strokeStyle = armed ? '#ff4d4d' : COLOR[p.owner] + '90'; g.lineWidth = armed ? 4 : 2.5; g.stroke();
-  }
   for (const p of pieces) if (p.type === 'fire') drawPiece(p, ...cxy(p.x, p.y), PS, false, now);   // the fires lie on the ground, under everything
   for (const pass of [0, 1]) for (const p of pieces) {   // pass 1 = animated pieces, drawn on top
     const v = vis.get(p);
@@ -1035,38 +991,28 @@ function drawField(now, vis) {
     const [px, py] = cxy(v ? v.x : gh.o.x, v ? v.y : gh.o.y);
     drawPiece(gh.p, px, py, PS, false, now, v);
   }
-  for (const e of fx) {                              // laser shots: flickering red/blue beam
-    if (e.type !== 'beam') continue;
-    const life = 1 - (now - e.t0) / FX_MS, flick = Math.floor(now / 40) % 2;
-    const [bx0, by0, bx1, by1] = beamPoints(...cxy(e.x0, e.y0), ...cxy(e.x1, e.y1));
-    g.save(); g.globalAlpha = Math.max(0, Math.min(1, life * 1.4)); drawBeamPicture(bx0, by0, bx1, by1, flick, .8 + Math.random() * .4); g.restore();
-  }
-  for (const e of fx) {                              // capture explosions
-    if (e.type === 'beam' || now < e.t0) continue;
+  for (const e of fx) {                              // capture explosions and landing smoke
+    if (now < e.t0) continue;
+    if (e.type === 'smoke') {                        // a puff that billows up and fades away
+      const u = (now - e.t0) / e.ms;
+      g.save(); g.globalAlpha = Math.max(0, Math.min(1, 2.2 * (1 - u)));
+      sprite(ART.expl, R.boom[u < .55 ? 3 : 4], ctrX(e.x, e.y), ctrY(e.y) + 40 * PS - 8 * PS * u, (62 + 36 * u) * PS);
+      g.restore(); continue;
+    }
     const k = Math.min(5, Math.floor((now - e.t0) / FX_MS * 6));
     sprite(ART.expl, R.boom[k], ctrX(e.x, e.y), ctrY(e.y) + 45 * PS, 100 * PS);
   }
-  g.restore();
-}
-
-function drawBeamPicture(x0, y0, x1, y1, f, th) {   // the beam picture (two flicker frames: red or blue outside), stretched between two points: left cap, middle, right cap
-  const len = Math.hypot(x1 - x0, y1 - y0), o = f * 512;
-  g.save(); g.translate(x0, y0); g.rotate(Math.atan2(y1 - y0, x1 - x0)); g.scale(1, th);
-  blit(ART.beam, o + 2, 0, 26, 80, -13, -20, 13, 40); blit(ART.beam, o + 28, 0, 456, 80, 0, -20, len, 40); blit(ART.beam, o + 484, 0, 26, 80, len, -20, 13, 40);
-  g.restore();
-}
-const LOFF = 11;                                     // sideways shift of every beam, to the right of its direction
-function beamPoints(x0, y0, x1, y1) {                // pixel line of a beam, shifted clockwise
-  const l = Math.hypot(x1 - x0, y1 - y0) || 1, ox = -(y1 - y0) / l * LOFF, oy = (x1 - x0) / l * LOFF;
-  return [x0 + ox, y0 + oy, x1 + ox, y1 + oy];
-}
-function wobblePath(ax, ay, bx, by, now, amp) {      // a line that wobbles like a ribbon in the wind
-  const len = Math.hypot(bx - ax, by - ay), n = Math.max(2, Math.floor(len / 5)), ux = (bx - ax) / (len || 1), uy = (by - ay) / (len || 1);
-  g.beginPath(); g.moveTo(ax, ay);
-  for (let i = 1; i <= n; i++) {
-    const t = i / n, w = Math.sin(t * len * .09 - now / 130) * amp * Math.min(1, t * 8, (1 - t) * 8 + .3);
-    g.lineTo(ax + (bx - ax) * t - uy * w, ay + (by - ay) * t + ux * w);
+  if (drag && drag.p.type === 'rover' && hover) {      // the destruction fields of the hovered landing hex: little smoke clouds drifting over every neighbouring hex
+    const m = drag.moves.find(m => m.x === hover.x && m.y === hover.y);
+    if (m) for (const [dx, dy] of HEX6) {
+      const nx = m.x + dx, ny = m.y + dy; if (!inB(nx, ny) || isStation(nx, ny)) continue;
+      const [x, y] = cxy(nx, ny), ph = nx * 1.7 + ny * 2.3;
+      g.save(); g.globalAlpha = .8 + .15 * Math.sin(now / 260 + ph);
+      sprite(ART.expl, R.boom[Math.floor(now / 420 + ph) % 2 ? 3 : 4], x, y + 30 * PS + 2 * PS * Math.sin(now / 330 + ph), 56 * PS);
+      g.restore();
+    }
   }
+  g.restore();
 }
 
 // astronaut sheet frames, right-facing (mirrored for left): front, 45°, profile, 135°, back
@@ -1136,8 +1082,6 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   } else if (p.type === 'rover') {
     const rk = s * .95 * .92;
     blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
-    const th = -Math.PI / 3 * (aim && aim.p === p ? aim.dir : p.dir), armed = p.fuel > 0;   // laser barrel pointing along the aim: red with a bright lens when armed, grey when empty
-    g.save(); g.translate(cx, cy + 9 * s); g.rotate(th); g.scale(s * .92, s * .92); blit(armed ? ART.barrelOn : ART.barrelOff, -2, -10, 40, 20); g.restore();
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -1147,7 +1091,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   g.filter = 'none';
   if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
   if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
-  if (p.type !== 'core') {                           // fuel = little flames next to the feet (a vehicle has one slot)
+  if (p.type !== 'core' && p.type !== 'rover') {      // fuel = little flames next to the feet (the drone has one slot; the rover needs no fuel)
     const slots = fuelCap(p);
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
@@ -1275,9 +1219,7 @@ function postMove(i, sig) {
 }
 function resolveSig(sig) {                                        // find the piece and the move that a signature describes
   for (const p of pieces) if (p.owner === turn) for (const mv of legal(p)) if (msig(p, mv) === sig) return [p, mv];
-  const m = /^(-?\d+),(-?\d+)>(laser|aim)(-?\d+),(-?\d+)$/.exec(sig);        // a laser aimed or fired at nothing is not in legal()
-  const p = m && at(+m[1], +m[2]);
-  return p && p.type === 'rover' && p.owner === turn ? [p, { kind: m[3], dx: +m[4], dy: +m[5], x: p.x, y: p.y }] : null;
+  return null;
 }
 function renderOnline() {
   if (!online) { onlineInfo.style.display = 'none'; return; }
