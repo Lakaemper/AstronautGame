@@ -92,11 +92,9 @@ for src, name in (('drone_blue', 'AstroShipBlue.png'), ('drone_red', 'AstroShipR
     cv = canvas(dw, dh); place(cv, L(src), cx=dw / 2, bottom=dh - 3); save(cv, name)
 theme['drone'] = [0, 0, dw, dh]
 
-# ---------------------------------------------------------------- rovers (golems) + barrels
-for src, name in (('rover_blue', 'AstroRoverBlue.png'), ('rover_red', 'AstroRoverRed.png')):
+# ---------------------------------------------------------------- smashers (the ogre; the laser barrels were removed with the laser)
+for src, name in (('rover_blue', 'AstroSmasherBlue.png'), ('rover_red', 'AstroSmasherRed.png')):
     cv = canvas(220, 184); place(cv, fit(L(src), 214, 168), cx=108, bottom=176); save(cv, name)
-for src, name in (('barrel_on', 'AstroBarrelArmed.png'), ('barrel_off', 'AstroBarrelEmpty.png')):
-    cv = canvas(80, 40); im = fit(L(src), 74, 40); put(cv, im, 4, round(20 - im.height / 2)); save(cv, name)
 
 # ---------------------------------------------------------------- shield: 6 frames of 208 x 208
 CR1 = [[[-.05, -1], [.05, -.55], [-.12, -.2], [.1, .1], [0, .5], [.08, 1]], [[.1, .1], [.45, .2], [.6, .5], [.95, .55]], [[-.12, -.2], [-.5, -.1], [-.7, .25], [-1, .3]], [[.05, -.55], [.4, -.7], [.65, -.5], [.95, -.6]]]
@@ -214,17 +212,7 @@ for i, (src, text, col) in enumerate([(L('banner0'), 'Blue wins!', (20, 40, 110)
     put(bn, fr, 0, i * 396)
 save(bn, 'AstroBanner.png')
 
-# ---------------------------------------------------------------- beam: 2 frames of 512 x 80 (left cap 2-28, middle 28-484, right cap 484-510)
-bm = L('beam'); print('beam src', bm.size)
-bx = 70; body = bm.crop((bx, 0, bm.width, bm.height))
-def beam_frame(src):
-    fr = canvas(512, 80); h = src.height; y0 = round(40 - h / 2)
-    cap_l = src.crop((0, 0, 26, h)).copy(); ramp = Image.linear_gradient('L').rotate(90).resize((26, h)); cap_l.putalpha(ImageChops.multiply(cap_l.getchannel('A'), ramp.transpose(Image.FLIP_LEFT_RIGHT)))
-    mid_src = src.crop((40, 0, 52, h)); mid = mid_src.resize((456, h), Image.BICUBIC)
-    cap_r = src.crop((src.width - 26, 0, src.width, h))
-    put(fr, cap_l, 2, y0); put(fr, mid, 28, y0); put(fr, cap_r, 484, y0); return fr
-f0 = beam_frame(body); f1 = blue_to_red(f0)
-beam = canvas(1024, 80); put(beam, f0, 0, 0); put(beam, f1, 512, 0); save(beam, 'AstroBeam.png')
+# (the laser beam picture was removed with the laser)
 
 # ---------------------------------------------------------------- sticker sheet (Home Planets + decoration)
 items = [('neptune', L('island_blue')), ('mars', L('island_red'))] + [(f'deco{i}', L(f'deco{i}')) for i in range(5)]

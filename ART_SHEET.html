@@ -64,8 +64,8 @@ loadArt('shipRed', 'AstroShipRed.png');
 loadArt('fire', 'AstroFire.png');
 loadArt('expl', 'AstroExplosion.png');
 loadArt('bg', 'AstroBG.png');
-loadArt('roverBlue', 'AstroRoverBlue.png');
-loadArt('roverRed', 'AstroRoverRed.png');
+if (THEME === 'fantasy') { loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set ...
+else loadArt('gorilla', 'GorillaSprites.png');   // ... and the gorilla in the space set
 loadArt('shield', 'AstroShield.png');
 loadArt('base', 'AstroBase.png');
 loadArt('shadow', 'AstroShadow.png');
@@ -79,6 +79,8 @@ loadArt('banner', 'AstroBanner.png');
 loadArt('sky', 'AstroSky.png');
 if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png');
 const imgOk = im => im && im.complete && im.naturalWidth;
+// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right), back
+const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
@@ -157,9 +159,12 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     g.restore();
   } else if (p.type === 'drone') {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, R.drone, cx, by + 2 * s, 76 * s);
-  } else if (p.type === 'rover') {
+  } else if (p.type === 'smasher' && ART.gorilla) {       // the gorilla (space set), front view at rest
+    const r = GORILLA[o === 0 ? 0 : 1][0], gk = 76 * s / 162, w = r[2] * gk, h = r[3] * gk;
+    blit(ART.gorilla, r[0], r[1], r[2], r[3], cx - w / 2, by + 2 * s - h, w, h);
+  } else if (p.type === 'smasher') {                  // fantasy: the ogre, one picture per team
     const rk = s * .95 * .92;
-    blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
+    blit(o === 0 ? ART.smasherBlue : ART.smasherRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Home Planet of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -169,7 +174,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   g.filter = 'none';
   if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
   if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
-  if (p.type !== 'core' && p.type !== 'rover') {      // fuel = little flames next to the feet (the drone has one slot; the rover needs no fuel)
+  if (p.type !== 'core' && p.type !== 'smasher') {      // fuel = little flames next to the feet (the drone has one slot; the smasher needs no fuel)
     const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
@@ -189,7 +194,7 @@ const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Ma
 const off2ax = (col, row) => [col - (row - (row & 1)) / 2, row];          // board (column,row), odd rows shifted right -> local axial
 const mk = (type, owner, q, r, o = {}) => ({ type, owner, q, r, x: q + 4, y: r, fuel: type === 'astro' ? 1 : type === 'drone' ? 1 : 0, st: 0, dmg: 0, hot: 0, dir: owner ? 2 : 4, ...o });
 const A = (q, r, o, fuel, e) => mk('astro', o, q, r, { fuel, ...e });
-const Rv = (q, r, o) => mk('rover', o, q, r, { fuel: 0, dir: 0 });
+const Rv = (q, r, o) => mk('smasher', o, q, r, { fuel: 0, dir: 0 });
 const D = (q, r, o, fuel = 1) => mk('drone', o, q, r, { fuel });
 const S = (q, r, o, dmg = 0) => mk('shield', o, q, r, { dmg });
 const C = (q, r, o) => mk('core', o, q, r);
@@ -281,15 +286,16 @@ add('1. Image files in the art folder (the original seven)', 'The seven original
 
 
 /* 1b. the files of the pieces and the board */
-add('1b. Image files for pieces, effects and the board', 'The sixteen files that used to be painted by code (the tiles are now also baked into the hexes). Each is drawn at twice the size of the game cell (the tiles and the sky at game size). Sheets hold several frames side by side: the shield (blue and red, undamaged and two crack stages), the team bases (blue, red, neutral) and the five ground tiles. AstroBarrelArmed/Empty.png and AstroBeam.png belonged to the old laser and are not used any more.', 1100, 1100, () => {
+add('1b. Image files for pieces, effects and the board', 'The files that used to be painted by code (the tiles are now also baked into the hexes). Each is drawn at twice the size of the game cell (the tiles and the sky at game size). Sheets hold several frames side by side: the shield (blue and red, undamaged and two crack stages), the team bases (blue, red, neutral) and the five ground tiles.', 1100, 1100, () => {
   const put = (im, x, y, name, w, h, k = 1) => { small(x, y - 14, name); g.fillStyle = '#2a2f3a'; g.fillRect(x - 3, y - 3, w * k + 6, h * k + 6); if (ready(im)) g.drawImage(im, x, y, w * k, h * k); };
-  put(ART.roverBlue, 10, 30, 'AstroRoverBlue.png', 220, 184); put(ART.roverRed, 260, 30, 'AstroRoverRed.png', 220, 184);
+  put(ART.gorilla, 10, 30, 'GorillaSprites.png (the smasher: Blue row, Red row; front, three-quarter, back)', 590, 370, .6);
+  put(ART.smasherBlue, 380, 30, 'AstroSmasherBlue.png (fantasy)', 220, 184, .5); put(ART.smasherRed, 500, 30, 'AstroSmasherRed.png (fantasy)', 220, 184, .5);
   put(ART.shadow, 650, 30, 'AstroShadow.png', 160, 60); put(ART.hotring, 650, 120, 'AstroHotRing.png', 200, 80); put(ART.bang, 880, 30, 'AstroBang.png', 80, 100); put(ART.zzz, 980, 30, 'AstroZzz.png', 148, 144, .7);
   put(ART.shield, 10, 260, 'AstroShield.png (blue 0, 1, 2 cracks, red 0, 1, 2 cracks)', 1248, 208, .85);
   put(ART.base, 10, 500, 'AstroBase.png (blue, red, neutral)', 480, 60, 1); put(ART.glow, 540, 480, 'AstroGlow.png', 256, 256, .5);
   put(ART.tiles, 10, 620, 'AstroTiles.png (five ground tiles, 100 x 100 px each)', 500, 100, 1); put(ART.hexes, 10, 760, 'AstroHexes.png (19 hex frames)', 960, 880, .32); put(ART.banner, 330, 760, 'AstroBanner.png (3 frames)', 1176, 1188, .2);
   put(ART.sky, 560, 620, 'AstroSky.png (board background, 858 x 772 px)', 858, 772, .5);
-  small(10, 770, 'The rover body, the shield stages, the bases, the shadow, the warning ring and the "!" and "zzz" marks are all drawn from these files.', '#ffd24d');
+  small(10, 770, 'The smasher body, the shield stages, the bases, the shadow, the warning ring and the "!" and "zzz" marks are all drawn from these files.', '#ffd24d');
 });
 
 /* 2. astronaut animation */
@@ -308,12 +314,12 @@ add('2. Astronaut animation frames', 'Five facing frames per colour (0 = south, 
 });
 
 /* 3. pieces and their states */
-add('3. Pieces and their states', 'Fuel flames are lit as fuel rises (an astronaut has three slots, the drone one, the rover needs none). Overcharge pulses red with a "!", a pushed piece is washed out with "zzz", shields crack in stages and can cover a piece, and the Home Planet of the side to move pulses.', 1100, 560, () => {
+add('3. Pieces and their states', 'Fuel flames are lit as fuel rises (an astronaut has three slots, the drone one, the smasher needs none). Overcharge pulses red with a "!", a pushed piece is washed out with "zzz", shields crack in stages and can cover a piece, and the Home Planet of the side to move pulses.', 1100, 560, () => {
   const R1 = [
     ['fuel 0', A0(0, 0)], ['fuel 1', A0(0, 1)], ['fuel 2', A0(0, 2)], ['fuel 3', A0(0, 3)], ['overcharged', A0(0, 3, { hot: 1 })], ['stunned', A0(0, 1, { st: 1 })],
     ['drone blue', mk('drone', 0, 0, 0, { fuel: 1 })], ['drone red', mk('drone', 1, 0, 0, { fuel: 1 })], ['drone empty', mk('drone', 0, 0, 0, { fuel: 0 })], ['drone stunned', mk('drone', 1, 0, 0, { fuel: 1, st: 1 })]];
   grid(R1.map(([l, p]) => ({ l, p })), 10, 110, 100, 0, 6, (it, x, y) => drawPiece(it.p, x, y, 1, false, 700));
-  const R2 = [{ l: 'rover blue', p: mk('rover', 0, 0, 0, { fuel: 0, dir: 0 }) }, { l: 'rover red', p: mk('rover', 1, 0, 0, { fuel: 0, dir: 0 }) }, { l: 'rover stunned', p: mk('rover', 0, 0, 0, { fuel: 0, dir: 0, st: 1 }) }];
+  const R2 = [{ l: 'smasher blue', p: mk('smasher', 0, 0, 0, { fuel: 0, dir: 0 }) }, { l: 'smasher red', p: mk('smasher', 1, 0, 0, { fuel: 0, dir: 0 }) }, { l: 'smasher stunned', p: mk('smasher', 0, 0, 0, { fuel: 0, dir: 0, st: 1 }) }];
   grid(R2, 10, 110, 100, 0, 112, (it, x, y) => drawPiece(it.p, x, y, 1, false, 700));
   const R3 = [['blue', 0, 0], ['cracked', 0, 1], ['cracked twice', 0, 2], ['red', 1, 0], ['cracked', 1, 1], ['cracked twice', 1, 2]].map(([l, o, d]) => ({ l: 'shield ' + l, o, d }));
   R3.push({ l: 'covering', o: 0, d: 0, under: 1 }, { l: 'covering (cracked)', o: 1, d: 1, under: 1 }, { l: 'fading 60%', o: 0, d: 0, a: .6 }, { l: 'fading 30%', o: 1, d: 0, a: .3 });

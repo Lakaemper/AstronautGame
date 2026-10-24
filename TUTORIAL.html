@@ -75,8 +75,8 @@ loadArt('shipRed', 'AstroShipRed.png');
 loadArt('fire', 'AstroFire.png');
 loadArt('expl', 'AstroExplosion.png');
 loadArt('bg', 'AstroBG.png');
-loadArt('roverBlue', 'AstroRoverBlue.png');
-loadArt('roverRed', 'AstroRoverRed.png');
+if (THEME === 'fantasy') { loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set ...
+else loadArt('gorilla', 'GorillaSprites.png');   // ... and the gorilla in the space set
 loadArt('shield', 'AstroShield.png');
 loadArt('base', 'AstroBase.png');
 loadArt('shadow', 'AstroShadow.png');
@@ -90,6 +90,8 @@ loadArt('banner', 'AstroBanner.png');
 loadArt('sky', 'AstroSky.png');
 if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png');
 const imgOk = im => im && im.complete && im.naturalWidth;
+// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right), back
+const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
@@ -168,9 +170,12 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     g.restore();
   } else if (p.type === 'drone') {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, R.drone, cx, by + 2 * s, 76 * s);
-  } else if (p.type === 'rover') {
+  } else if (p.type === 'smasher' && ART.gorilla) {       // the gorilla (space set), front view at rest
+    const r = GORILLA[o === 0 ? 0 : 1][0], gk = 76 * s / 162, w = r[2] * gk, h = r[3] * gk;
+    blit(ART.gorilla, r[0], r[1], r[2], r[3], cx - w / 2, by + 2 * s - h, w, h);
+  } else if (p.type === 'smasher') {                  // fantasy: the ogre, one picture per team
     const rk = s * .95 * .92;
-    blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
+    blit(o === 0 ? ART.smasherBlue : ART.smasherRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Home Planet of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -180,7 +185,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   g.filter = 'none';
   if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
   if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
-  if (p.type !== 'core' && p.type !== 'rover') {      // fuel = little flames next to the feet (the drone has one slot; the rover needs no fuel)
+  if (p.type !== 'core' && p.type !== 'smasher') {      // fuel = little flames next to the feet (the drone has one slot; the smasher needs no fuel)
     const slots = p.type === 'astro' ? MAXFUEL : VEH_FUEL;
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
@@ -200,7 +205,7 @@ const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Ma
 const off2ax = (col, row) => [col - (row - (row & 1)) / 2, row];          // board (column,row), odd rows shifted right -> local axial
 const mk = (type, owner, q, r, o = {}) => ({ type, owner, q, r, x: q + 4, y: r, fuel: type === 'astro' ? 1 : type === 'drone' ? 1 : 0, st: 0, dmg: 0, hot: 0, dir: owner ? 2 : 4, ...o });
 const A = (q, r, o, fuel, e) => mk('astro', o, q, r, { fuel, ...e });
-const Rv = (q, r, o) => mk('rover', o, q, r, { fuel: 0, dir: 0 });
+const Rv = (q, r, o) => mk('smasher', o, q, r, { fuel: 0, dir: 0 });
 const D = (q, r, o, fuel = 1) => mk('drone', o, q, r, { fuel });
 const S = (q, r, o, dmg = 0) => mk('shield', o, q, r, { dmg });
 const C = (q, r, o) => mk('core', o, q, r);
@@ -276,7 +281,7 @@ const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) fo
 
 const CARDS = [
   { wide: true, title: 'The pieces', gallery: true,
-    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a rover (the power piece), a drone, a shield and a Home Planet. Astronauts and drones carry <b>fuel</b>, shown as little flames next to their feet (grey = empty); the rover needs none. The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
+    text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a smasher (the power piece), a drone, a shield and a Home Planet. Astronauts and drones carry <b>fuel</b>, shown as little flames next to their feet (grey = empty); the smasher needs none. The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
   { wide: true, title: 'The start position', board: true,
     text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
 
@@ -302,18 +307,18 @@ const CARDS = [
       { w: 420, h: 250, cells: ring(3).filter(c => c[1] >= -1 && c[1] <= 1), pieces: [C(-3, 0, 0), ST(0, 0)], hl: [[0, 0, COL.no]], arrows: [{ path: [[-3, 0], [0, 0]] }], labels: [[0, 0, 'resign', -44, 13]] }],
     text: '<ul><li><b>Sidestep:</b> a Home Planet may move <b>one hex sideways</b> along its row, but only onto an <b>empty</b> hex. It can be used to dodge an astronaut that is about to reach it, <b>but once an enemy astronaut stands next to the Home Planet, the Home Planet can no longer move</b> (it can still resign).</li><li><b>Resign:</b> drag your Home Planet <b>into the central fire</b> (a special move, you are asked to confirm). The game ends at once and <b>the other side wins</b>.</li></ul>' },
   { title: 'Reaching the Home Planet wins', draw: [{ pieces: [C(0, 0, 1), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, 'WIN', 48, 15]] }],
-    text: '<p>Walk an astronaut <b>one step</b> onto the enemy Home Planet and you win. A jump can never end on a Home Planet, and a Home Planet can sidestep (see below). Rovers and drones cannot win.</p>' },
+    text: '<p>Walk an astronaut <b>one step</b> onto the enemy Home Planet and you win. A jump can never end on a Home Planet, and a Home Planet can sidestep (see below). Smashers and drones cannot win.</p>' },
   { title: 'One-time fuel fires', draw: [{ pieces: [F(1, 0), A(0, 0, 0, 0)], hl: [[1, 0, COL.refuel]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, '+1 fuel', 44, 13]] }],
-    text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), and a drone is filled to 1. Flying over a fire does nothing, and a rover that lands on one leaves it burning.</p>' },
+    text: '<p>The two small fires in the middle row are used up by the <b>first piece that lands on one</b>. Only that piece is refuelled: an astronaut gets +1 (never above 2, so a fire cannot overcharge it), and a drone is filled to 1. Flying over a fire does nothing, and a smasher that lands on one leaves it burning.</p>' },
 
-  { wide: true, title: 'Rover: the smash', pair: [
+  { wide: true, title: 'Smasher: the smash', pair: [
       { w: 420, h: 300, radius: 2, pieces: [Rv(0, 0, 0), A(1, -1, 1, 1), D(2, -1, 1, 1), A(-1, 2, 1, 1), A(0, -2, 1, 1), A(3, 0, 0, 1)], hl: [[1, 0, COL.capture], [-1, 1, COL.walk], [2, 0, COL.jump]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[0, 0, 'before', 40, 12]] },
       { w: 420, h: 300, radius: 2, pieces: [Rv(1, 0, 0), A(-1, 2, 1, 1), A(0, -2, 1, 1), A(3, 0, 0, 1)], booms: [[1, -1], [2, -1]], labels: [[1, 0, 'after', 40, 12]] }],
-    text: '<ul><li>The rover is the <b>power piece</b>. It <b>must move</b> every time you use it: <b>one hex</b> (a step) or <b>two hexes</b> (a jump that flies over everything except the central fire), in any direction.</li><li>Where it <b>lands</b>, it <b>destroys every enemy astronaut, rover and drone on the six hexes around it</b>, and an enemy standing on the landing hex itself is captured as well. It does not harm your own pieces.</li><li>It cannot land on your own pieces, on a shield or on a Home Planet, so it cannot win the game. A piece <b>under a shield</b> survives, and Home Planets and shields are never destroyed. Standing still is not an option: the power is released only by moving.</li><li>The rover has <b>no fuel</b>. When you drag it, the landing hexes that would destroy something are shown in red. Over the hex you hover, <b>little smoke clouds</b> show the six hexes around it, and the pieces that would be destroyed are marked. When the rover lands, smoke billows over all six hexes.</li></ul>' },
+    text: '<ul><li>The smasher is the <b>power piece</b>. It <b>must move</b> every time you use it: <b>one hex</b> (a step) or <b>two hexes</b> (a jump that flies over everything except the central fire), in any direction.</li><li>Where it <b>lands</b>, it <b>destroys every enemy astronaut, smasher and drone on the six hexes around it</b>, and an enemy standing on the landing hex itself is captured as well. It does not harm your own pieces.</li><li>It cannot land on your own pieces, on a shield or on a Home Planet, so it cannot win the game. A piece <b>under a shield</b> survives, and Home Planets and shields are never destroyed. Standing still is not an option: the power is released only by moving.</li><li>The smasher has <b>no fuel</b>. When you drag it, the landing hexes that would destroy something are shown in red. Over the hex you hover, <b>little smoke clouds</b> show the six hexes around it, and the pieces that would be destroyed are marked. When the smasher lands, smoke billows over all six hexes.</li></ul>' },
   { title: 'Shield: moving and covering', draw: [{ pieces: [S(0, 0, 0)], hl: nb(0, 0).map(c => [...c, COL.cover]) }, { pieces: [A(0, 0, 0, 1), S(0, 0, 0)], labels: [[0, 0, 'covered', 44, 13]] }],
-    text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Home Planet, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or laser) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
+    text: '<ul><li>A shield moves <b>one hex</b> in any direction, also onto hexes with pieces (yours or the enemy\'s), but never onto a Home Planet, the central fire or another shield.</li><li>Whatever is <b>under a shield is completely protected</b> (no capture, push or smash) <b>but cannot move</b> until the shield moves away.</li><li>Your own pieces can move under your own shield.</li><li>A shield can never be captured, pushed or landed on.</li></ul>' },
   { title: 'Shield: breaking it', draw: [{ pieces: [A(0, 0, 0, 1), S(0, 0, 1, 0)], labels: [[0, 0, 'start', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 1)], labels: [[0, 0, 'cracked', 46, 13]] }, { pieces: [A(0, 0, 0, 1), S(0, 0, 1, 2)], labels: [[0, 0, 'cracked twice', 46, 13]] }],
-    text: '<p>A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield: after <b>one</b> of its turns the shield is <b>cracked</b> (more transparent, with cracks), after <b>two</b> it is <b>cracked twice</b> (more cracks), and after <b>three</b> it <b>shatters</b>, so the prisoner is held for three turns. A shield that has moved away heals on the next turn.</p><p>A <b>rover\'s laser</b> damages a shield too: every hit counts as one damage, but <b>two hits</b> are enough to break it (only the slow breaking from below needs three). A hit shield heals only after one further move, so the owner has exactly one turn to move it away or stop the rover before the second shot.</p>' },
+    text: '<p>A shield sitting on an <b>enemy</b> piece holds it, but that side breaks the shield: after <b>one</b> of its turns the shield is <b>cracked</b> (more transparent, with cracks), after <b>two</b> it is <b>cracked twice</b> (more cracks), and after <b>three</b> it <b>shatters</b>, so the prisoner is held for three turns. A shield that has moved away heals on the next turn.</p>' },
 
   { wide: true, title: 'Turns, ending and helpers',
     text: '<ul><li><b>Turn:</b> press <b>New game</b>. Blue moves first, then you alternate. Each turn is <b>one move of one piece</b>. The Home Planet of the side to move pumps gently.</li><li><b>Win:</b> an astronaut steps onto the enemy Home Planet, or the other side resigns by flying its Home Planet into the central fire.</li><li><b>Draw:</b> neither side has an astronaut left, the player to move cannot move, or the same position occurs three times.</li><li><b>Online game:</b> press <b>Online game</b>, copy the link and send it to your friend. Whoever opens it plays the other colour; the colours are drawn at random. Both of you see every move live, and a dropped connection simply picks up again (reload the link). There is no undo in online games.</li><li><b>Players menu:</b> human or AI for each colour, two humans, or two AIs. <b>Suggest move</b> shows what the AI would play. <b>Undo move</b> takes back up to 4 moves.</li></ul>' },
@@ -334,7 +339,7 @@ function build() {
 }
 function galleryDraw(cv) {
   const items = [
-    ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Rover', [Rv(0, 0, 0), Rv(0, 0, 1)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
+    ['Astronaut', [A(0, 0, 0, 1), A(0, 0, 1, 2)], 2], ['Smasher', [Rv(0, 0, 0), Rv(0, 0, 1)], 2], ['Drone', [D(0, 0, 0), D(0, 0, 1)], 2],
     ['Shield', [S(0, 0, 0), S(0, 0, 1)], 2], ['Home Planet', [C(0, 0, 0), C(0, 0, 1)], 2], ['Fire', [F(0, 0), ST(0, 0)], 2]];
   const cw = 126, w = cw * items.length + 20, h = 200, dpr = 2;
   cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px';

@@ -67,7 +67,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if len(rooms) >= MAX_ROOMS: return self.reply(503, {'error': 'too many games running'})
                 rid, tok = secrets.token_urlsafe(5).replace('-', 'x').replace('_', 'y'), secrets.token_urlsafe(12)
                 colour = data['color'] if data.get('color') in (0, 1) else secrets.randbelow(2)          # the host picks a colour, or gets a random one
-                setup = data['setup'] if re.fullmatch(r'[24][01]{3}', str(data.get('setup', ''))) else '4111'   # astronauts, rover, drone, shield
+                setup = data['setup'] if re.fullmatch(r'[24][01]{3}', str(data.get('setup', ''))) else '4111'   # astronauts, smasher, drone, shield
                 start = 1 if data.get('start') == 1 else 0                                                 # the colour that moves first
                 rooms[rid] = {'created': time.time(), 'moves': [], 'tokens': {tok: colour}, 'setup': setup, 'start': start, 'host': colour}
                 save(); return self.reply(200, {'room': rid, 'token': tok, 'color': colour, **self.options(rooms[rid])})

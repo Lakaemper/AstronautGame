@@ -34,7 +34,7 @@ Then say which style (A or B) you want. If you want fantasy, also paste the piec
 | Piece | Rules in one line | Fantasy version [B] |
 |---|---|---|
 | Astronaut (4 per team) | Walks one hex or jumps up to 3 hexes using fuel; steps onto the enemy Home Planet to win. Fuel is shown as little flames beside the feet. | Wizard or sage, mana instead of fuel |
-| Rover (1) | Slow vehicle with a laser barrel on top that turns and fires along a line. | Stone guardian or golem with a gaze beam |
+| Smasher (1) | Slow vehicle with a laser barrel on top that turns and fires along a line. | Stone guardian or golem with a gaze beam |
 | Drone (1) | Flies up to 3 hexes and pushes an enemy piece one hex away. | Dragon |
 | Shield (1) | A glass dome that covers one piece, cracks in 2 stages, then shatters. | Ward bubble or ice-crystal prison |
 | Home Planet (1) | The target. Can be moved sideways one hex. | Floating pagoda or sky-keep |
@@ -51,7 +51,7 @@ All sizes are in pixels. "Frame" means a rectangle cut out of a bigger sheet by 
 | AstroFire.png | 179 x 50 | 4 flames: [12,0,25,50] [51,0,26,50] [94,0,29,50] [144,0,22,50] | Four flicker shapes of one flame, **hanging downwards** from a jetpack (the game flips them upright for the fires). All four must have similar size and area. |
 | AstroExplosion.png | 998 x 200 | [14,0,299,200] [324,0,184,200] [520,0,179,200] [709,0,146,200] [875,0,87,200] [967,0,18,200] | Six frames of a burst: starburst, smoke puff, drifting smoke, fading smoke, tiny, almost gone. Left to right in time. |
 | AstroBG.png | 384 x 256 | sun [2,3,115,112], Neptune [217,96,73,74], Mars [13,114,62,62], plus 15 decorations (planets, stars, rocks) | Neptune is the **Blue Home Planet** and Mars the **Red Home Planet**, drawn about 80 px high. The rest are stickers scattered behind the board. |
-| AstroRoverBlue.png, AstroRoverRed.png | 220 x 184 (= 110 x 92 game px at 2x) | 1 frame | Rover body **without** the laser barrel. Ground contact point is at x = 104, y = 164 (the wheel bottoms). Facing right. |
+| AstroSmasherBlue.png, AstroSmasherRed.png | 220 x 184 (= 110 x 92 game px at 2x) | 1 frame | Smasher body **without** the laser barrel. Ground contact point is at x = 104, y = 164 (the wheel bottoms). Facing right. |
 | AstroBarrelArmed.png, AstroBarrelEmpty.png | 80 x 40 | 1 frame | Laser barrel pointing **right (east)**; the pivot is at x = 4, y = 20 and the barrel is about 76 px long. The game rotates it to any of 6 directions. Armed has a red band and a gold lens, Empty is grey. |
 | AstroShield.png | 1248 x 208 | 6 frames of 208 x 208 in a row: Blue intact, Blue cracked 1, Blue cracked 2, Red intact, Red cracked 1, Red cracked 2 | A circular glass dome, 104 px across inside the frame, team-coloured rim. **Opacity is baked in**: intact about 70 %, cracked about 42 % (the cracks themselves nearly opaque). |
 | AstroBase.png | 480 x 60 | 3 frames of 160 x 60: Blue, Red, neutral | The flat oval base under every piece, 136 x 40 inside its frame, team coloured. |
@@ -76,8 +76,8 @@ Replace `[A or B]` with your chosen style. Attach the old image as a reference. 
 2. **Astronaut turning poses.** "Same character as the last image, pose 1, 2 and 3: turning in three equal steps to face the viewer's left, then pose 4: seen from behind. Same height and feet position in every pose. Same style."
 3. **Astronaut held pose.** "Same character, the 'wave' pose: arms up, as if lifted by the player. Same size."
 4. **Drone.** "A small flying craft [A: rocket, arrowhead shape, red or blue; B: Eastern dragon] seen from above at a slight angle, 143 x 160 portrait, base at the bottom, Blue accent. Bold silhouette."
-5. **Rover body.** "A slow six-wheeled vehicle [A: moon rover with solar panel, dome and antenna dish; B: stone guardian on wheels or a small golem cart] facing right, side view with slight top view, 110 x 92 proportion, wheels touching the ground at the bottom, Blue accent on the chassis. No laser barrel."
-6. **Laser barrel.** "Just the laser barrel for that rover: a thin tube, pointing right, 80 x 40 px, pivot on the left end. Two versions: armed (red band, glowing gold lens) and empty (grey)."
+5. **Smasher body.** "A slow six-wheeled vehicle [A: moon smasher with solar panel, dome and antenna dish; B: stone guardian on wheels or a small golem cart] facing right, side view with slight top view, 110 x 92 proportion, wheels touching the ground at the bottom, Blue accent on the chassis. No laser barrel."
+6. **Laser barrel.** "Just the laser barrel for that smasher: a thin tube, pointing right, 80 x 40 px, pivot on the left end. Two versions: armed (red band, glowing gold lens) and empty (grey)."
 7. **Shield, three stages.** "A transparent glass dome seen from above, circular, team-coloured rim, a white highlight on the upper left. Stage 1: intact. Stage 2: with a branching crack. Stage 3: with a second, bigger set of cracks. Keep the same size. Blue version, then Red."
 8. **Home Planets / sky-keep.** "The Blue Home Planet [A: an ocean planet like Neptune; B: a floating pagoda keep with blue roofs] and the Red one [A: a red cratered planet like Mars; B: the same keep with red roofs]. Each fits an 80 x 80 px square when shrunk."
 9. **Flame, four frames.** "One flame in four different flicker shapes, hanging downwards, each 25 to 30 px wide and 50 px tall, similar size and area, orange with a yellow core, on a transparent background."

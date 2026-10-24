@@ -54,10 +54,10 @@ changed, worth a bigger test.
 ## Observations from hand play (game 1, unfinished, Red against the original AI at 5 s)
 
 - The original AI spent every astronaut's fuel on advancing and left several at fuel 0 next to the sun without refuelling.
-  The new weights fix this: its first move is now a refuel from its rover.
+  The new weights fix this: its first move is now a refuel from its smasher.
 - `legal()` only generates `aim` (and `laser`) moves when a target is already in line. The AI therefore never pre-aims a
-  rover laser to deny a lane, which a human can do with "aim at nothing". Not changed; probably not worth the branching.
-- Defence idea for a human: two guards next to the Core with fuel 1 or more, plus the default west aim of the rover, which
+  smasher laser to deny a lane, which a human can do with "aim at nothing". Not changed; probably not worth the branching.
+- Defence idea for a human: two guards next to the Core with fuel 1 or more, plus the default west aim of the smasher, which
   covers the Core's entry hexes on its row, makes a direct rush hard. Not tested against the AI.
 
 ## Ideas not done
@@ -66,7 +66,7 @@ changed, worth a bigger test.
   non-captures deep in the tree should buy about one ply.
 - Make/unmake instead of cloning the piece list in `child` (the search runs about 0.5 million positions per second).
 - Retest the evaluation weights at the real 10 s budget and with the worker and pondering (these tests used the plain search).
-- Evaluation terms still missing: shield safety, a rover standing in an enemy rover's line, who gets the first shot.
+- Evaluation terms still missing: shield safety, a smasher standing in an enemy smasher's line, who gets the first shot.
 - A bigger test of draw contempt (`draw` 0 against -600).
 
 ## What changed in `index.html`
@@ -74,32 +74,32 @@ changed, worth a bigger test.
 Only the engine script: `EV` now `{ fuel: 55, qs: 4, ... }` and the new function `qsearch`, called from `minimax` at depth 0.
 Not deployed to the server (the later rule changes of the same day touched the rules code too, see NOTES.md).
 
-## Later tests (same day, after the rover, overcharge and refuel changes)
+## Later tests (same day, after the smasher, overcharge and refuel changes)
 
 Same method (AI-vs-AI duels, colours swapped, 24 games each, 1.5 s per move) against the current weights.
 
 | variant (A) | A wins | B wins | draws / capped |
 |---|---|---|---|
-| rover armed value 0 | 13 | 9 | 2 |
-| rover armed value 70 | 12 | 12 | 0 |
-| rover armed value 120 | 9 | 10 | 5 |
-| rover base value 85 | 9 | 12 | 3 |
-| bonus 30 for an empty rover at the sun | 9 | 13 | 2 |
-| bonus 60 for an empty rover at the sun + armed 70 (before overcharge existed) | 16 | 5 | 3 |
+| smasher armed value 0 | 13 | 9 | 2 |
+| smasher armed value 70 | 12 | 12 | 0 |
+| smasher armed value 120 | 9 | 10 | 5 |
+| smasher base value 85 | 9 | 12 | 3 |
+| bonus 30 for an empty smasher at the sun | 9 | 13 | 2 |
+| bonus 60 for an empty smasher at the sun + armed 70 (before overcharge existed) | 16 | 5 | 3 |
 | the same two, after overcharge | 12 | 10 | 2 |
 | overcharge penalty `hot` 0 (default 40) | 9 | 13 | 2 |
 | overcharge penalty `hot` 120 | 7 | 15 | 2 |
 | fuel weight 40 (default 55) | 8 | 14 | 2 |
 
-Conclusion: the defaults (`fuel` 55, `hot` 40, rover 50 + armed 35) stay. The 16 to 5 result did not repeat.
-In 12 games the AI never let an astronaut explode from overcharge; its rovers refuelled 8 times and fired one laser shot.
+Conclusion: the defaults (`fuel` 55, `hot` 40, smasher 50 + armed 35) stay. The 16 to 5 result did not repeat.
+In 12 games the AI never let an astronaut explode from overcharge; its smashers refuelled 8 times and fired one laser shot.
 
 First-move advantage: 50 AI-vs-AI games with identical settings (3 s per move, current rules): Blue (moves first) won 26, Red won 24,
 no draws (p = 0.89). No sign of a first-move advantage; a small one cannot be excluded with 50 games.
 
-## Rover double step on its first move (2026-10-21, AI-vs-AI, rule test)
+## Smasher double step on its first move (2026-10-21, AI-vs-AI, rule test)
 
-Question: the rover was hardly ever moved. Would an optional 2-hex first move (like a pawn) help? Implemented as `ROVER_DOUBLE` (see NOTES.md) and
+Question: the smasher was hardly ever moved. Would an optional 2-hex first move (like a pawn) help? Implemented as `SMASHER_DOUBLE` (see NOTES.md) and
 tested with the real engine inside 14 Web Workers in the browser (7 per rule), 0.7 s and 8 plies per move, current weights, 150-ply cap,
 both sides played by the same AI. 96 of 98 planned games finished (the last two were stopped). This compares the two RULE sets, it is not a strength test.
 
@@ -107,21 +107,21 @@ both sides played by the same AI. 96 of 98 planned games finished (the last two 
 |---|---|---|
 | Blue wins / Red wins / draws | 14 / 35 / 0 | 22 / 22 / 3 |
 | average game length (plies) | 51 | 65 |
-| rover moves per game (both sides) | 1.29 | 4.19 |
-| games in which any rover moved | 23 of 49 | 42 of 47 |
+| smasher moves per game (both sides) | 1.29 | 4.19 |
+| games in which any smasher moved | 23 of 49 | 42 of 47 |
 | double steps per game | 0 | 1.26 |
-| first rover move at ply (average, sides that moved it) | 41 | 30 |
-| a rover refuelled at a fire, per game | 0.06 | 0.34 |
+| first smasher move at ply (average, sides that moved it) | 41 | 30 |
+| a smasher refuelled at a fire, per game | 0.06 | 0.34 |
 | laser shots per game | 0 | 0.02 |
 
-Reading: the double step triples the rover moves, the AI uses it, and the rover gets to a fire much more often. It still almost never shoots
+Reading: the double step triples the smasher moves, the AI uses it, and the smasher gets to a fire much more often. It still almost never shoots
 (0.02 per game), so it is used as a fuel carrier, not as a gun. The old rule gave Red 35 of 49 wins here, which does not agree with the 26:24 measured
 earlier at 3 s per move: the short 0.7 s search may favour one colour, so treat the colour split as a weak signal. A repeat at a longer time per
 move would be needed to confirm it.
 
-## Rover with 2 fuel, laser breaks shields, turn + shoot in one move (2026-10-21, rule test)
+## Smasher with 2 fuel, laser breaks shields, turn + shoot in one move (2026-10-21, rule test)
 
-Changes: a rover carries up to 2 fuel (`ROVER_FUEL`, each shot costs 1), a laser hit damages a shield (2 hits shatter it; a hit shield
+Changes: a smasher carries up to 2 fuel (`SMASHER_FUEL`, each shot costs 1), a laser hit damages a shield (2 hits shatter it; a hit shield
 heals only one move later than usual), and turning and shooting is ONE move (`legal()` no longer generates `aim`). Same method as the
 double-step test above (14 workers x 7 games planned, 0.7 s and 8 plies per move, current weights, both sides the same AI; 93 games finished,
 the rest were stopped). Compared with the double-step-only version (47 games):
@@ -130,14 +130,14 @@ the rest were stopped). Compared with the double-step-only version (47 games):
 |---|---|---|
 | Blue wins / Red wins / draws | 22 / 22 / 3 | 45 / 36 / 12 |
 | average game length (plies) | 65 | 63 |
-| rover moves per game (both sides) | 4.19 | 6.89 |
+| smasher moves per game (both sides) | 4.19 | 6.89 |
 | laser shots per game | 0.02 | 1.01 |
 | games with at least one shot | 1 of 47 (approx.) | 63 of 93 |
-| rover refuelled at a fire, per game | 0.34 | 0.97 |
+| smasher refuelled at a fire, per game | 0.34 | 0.97 |
 | shield hits / shatters per game | not possible | 0 / 0 |
 | average ply of the first shot | - | 17 |
 
-Reading: the rover now takes part: it moves more, refuels at the fires about once per game and shoots about once per game, which was almost
+Reading: the smasher now takes part: it moves more, refuels at the fires about once per game and shoots about once per game, which was almost
 never the case before. The shield damage is NOT used at all by the AI (0 hits in 93 games): the evaluation values a shield at 40 (minus 15 per
 damage point), so two shots (two tempi) never pay off, and nothing in the evaluation values what a shield protects. Draws went up (12 of 93,
 13%, against 6%), probably repetition draws; not investigated. First-shot and colour effects are within the noise of this sample size.

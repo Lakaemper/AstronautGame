@@ -58,7 +58,7 @@
       <tr><td><span class="rect" style="--c:var(--red)" title="Red"></span></td><td><input type="checkbox" class="ck" id="ck1h" style="--c:var(--red)" checked></td><td><input type="checkbox" class="ck" id="ck1a" style="--c:var(--red)"></td></tr></table>
     <div id="starts">Starts <label class="sw" title="Blue starts"><input type="radio" name="start" value="0" checked><span class="rect" style="--c:var(--blue)"></span></label><label class="sw" title="Red starts"><input type="radio" name="start" value="1"><span class="rect" style="--c:var(--red)"></span></label></div>
     <label>Astronauts <select id="nAstro"><option>2</option><option selected>4</option></select></label>
-    <label><input type="checkbox" id="cRover" checked> Rover</label>
+    <label><input type="checkbox" id="cSmasher" checked> Smasher</label>
     <label><input type="checkbox" id="cDrone" checked> Drone</label>
     <label><input type="checkbox" id="cShield" checked> Shield</label>
     <button id="reset">New game</button>
@@ -84,7 +84,7 @@
 
 <script id="engine">
 // Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
-const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1;   // a drone carries 1 unit (a rover needs no fuel)
+const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1;   // a drone carries 1 unit (a smasher needs no fuel)
 // The board is a rectangle of COLS x ROWS pointy-top hexes (77 cells: the shifted odd rows lose their last hex, which would stick out on the right); every odd row is shifted right by half a hex. Positions are stored
 // in axial coordinates (x = q + AXS, y = row) so that all six directions are the same constant steps everywhere:
 // x = column - floor(row / 2) + AXS. AXS keeps x >= 0 (needed for the lookup tables).
@@ -100,7 +100,7 @@ const CORE = [{ x: toX(MIDC, ROWS - 1), y: ROWS - 1 }, { x: toX(MIDC, 0), y: 0 }
 const fixed = t => t.type === 'core' || t.type === 'shield';   // cannot be captured, pushed or landed on
 // Hex directions in axial coordinates (pointy-top hexes).
 const HEX6 = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];   // neighbours: E, NE, NW, W, SW, SE (screen angle = -60 deg * index)
-const fuelCap = p => p.type === 'astro' ? MAXFUEL : p.type === 'rover' ? 0 : VEH_FUEL;   // largest tank of a piece
+const fuelCap = p => p.type === 'astro' ? MAXFUEL : p.type === 'smasher' ? 0 : VEH_FUEL;   // largest tank of a piece
 const hexDist = (ax, ay, bx, by) => (Math.abs(ax - bx) + Math.abs(ay - by) + Math.abs(ax + ay - bx - by)) / 2;
 
 // A shield sits on top of a hex: at() returns it instead of whatever stands under it, so everything under a shield is invisible
@@ -122,9 +122,9 @@ function flyDist(ax, ay, bx, by) {
   return t > 0 && t < d && sx === t * ux && sy === t * uy ? d + 1 : d;
 }
 
-// The rover's power: when it lands, every enemy astronaut, rover and drone on a neighbouring hex is destroyed (a piece under a shield is safe,
+// The smasher's power: when it lands, every enemy astronaut, smasher and drone on a neighbouring hex is destroyed (a piece under a shield is safe,
 // Home Planets and shields are never destroyed). The enemy standing on the landing hex itself is captured by the move as usual.
-const SMASHABLE = { astro: 1, rover: 1, drone: 1 };
+const SMASHABLE = { astro: 1, smasher: 1, drone: 1 };
 function smashList(p, x, y) {
   const out = [];
   for (const [dx, dy] of HEX6) { const v = pieces.find(q => q !== p && q.x === x + dx && q.y === y + dy && q.owner !== p.owner && SMASHABLE[q.type] && !covered(q)); if (v) out.push(v); }
@@ -165,7 +165,7 @@ function legal(p) {
     if (p.fuel < MAXFUEL && nearStation(p)) push(STATION.x, STATION.y, 'refuel');   // drag the astronaut onto the sun: it stays where it is and takes fuel
     if (p.fuel < MAXFUEL) for (const v of pieces)                      // feed: take the fuel pack of an own drone in the 8-neighbourhood (the astronaut stays put)
       if (v.owner === o && v.type === 'drone' && v.fuel > 0 && !covered(v) && hexDist(v.x, v.y, p.x, p.y) === 1) push(v.x, v.y, 'feed');
-  } else if (p.type === 'rover') {                                     // the power piece (an ogre in the fantasy set): it MUST move 1 or 2 hexes (2 = a jump over everything but the sun), and where it lands it destroys all enemies around it
+  } else if (p.type === 'smasher') {                                     // the power piece (an ogre in the fantasy set): it MUST move 1 or 2 hexes (2 = a jump over everything but the sun), and where it lands it destroys all enemies around it
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
       const x = p.x + dx, y = p.y + dy, d = flyDist(p.x, p.y, x, y);
       if (d < 1 || d > 2 || hexDist(0, 0, dx, dy) > 2 || !inB(x, y) || isStation(x, y)) continue;
@@ -230,11 +230,11 @@ function step(p, m) {                              // mutates pieces/turn/winner
     }
     p.x = m.x; p.y = m.y;
     if (m.kind === 'jump' && p.type === 'astro') { p.fuel -= m.cost; if (!t) text = `${NAME[p.owner]} astronaut jets across.`; }
-    if (p.type === 'rover') {                                         // the landing: everything enemy around the rover is destroyed
+    if (p.type === 'smasher') {                                         // the landing: everything enemy around the smasher is destroyed
       const dead = smashList(p, p.x, p.y);
       for (const v of dead) pieces.splice(pieces.indexOf(v), 1);
       const n = dead.length + (t && !under ? 1 : 0);
-      if (n) text = `${NAME[p.owner]} rover lands with a crash and destroys ${n} enemy piece${n > 1 ? 's' : ''}!`;
+      if (n) text = `${NAME[p.owner]} smasher lands with a crash and destroys ${n} enemy piece${n > 1 ? 's' : ''}!`;
     }
     if (under) text = `${NAME[p.owner]} ${p.type === 'astro' ? 'astronaut' : p.type} moves under its shield.`;
   }
@@ -268,7 +268,7 @@ function step(p, m) {                              // mutates pieces/turn/winner
         if (++sh.dmg >= 3) { pieces.splice(pieces.indexOf(sh), 1); text += ' The shield shatters!'; }
         else text += ' The shield cracks!';
       }
-    } else if (sh.dmg > 0) { if (++sh.hl > 1) { sh.dmg = 0; sh.hl = 0; } }   // moved away or never on an enemy: heals on the next move (a laser hit sets hl = -1, so one move later)
+    } else if (sh.dmg > 0) { if (++sh.hl > 1) { sh.dmg = 0; sh.hl = 0; } }   // moved away or never on an enemy: heals on the next move
   }
   if (winner !== null) { if (m.kind !== 'resign') text = `${NAME[winner]} reached the Home Planet and wins!`; }
   else {
@@ -289,7 +289,7 @@ function inState(s, fn) {                          // run engine code (legal/ste
 }
 // Move ordering (the better the order, the more alpha-beta cuts): captures first, most valuable victim first, own pieces
 // last; then moves that caused a cutoff before (killer moves per ply, history table per piece type / from / to square).
-const TYPEI = { astro: 0, rover: 1, drone: 2, core: 3, shield: 4 }, VICTIM = { astro: 100, rover: 85, drone: 40, shield: 30, core: 100000 };
+const TYPEI = { astro: 0, smasher: 1, drone: 2, core: 3, shield: 4 }, VICTIM = { astro: 100, smasher: 85, drone: 40, shield: 30, core: 100000 };
 let hist = new Int32Array(2 * 5 * XN * ROWS * XN * ROWS), killers = [];
 const hkey = (p, m) => (((p.owner * 5 + TYPEI[p.type]) * XN * ROWS) + p.y * XN + p.x) * XN * ROWS + m.y * XN + m.x;
 // Transposition table used for ordering only: remembers the best move found in a position (hash -> move key), so each
@@ -332,7 +332,7 @@ function child(s, mv) {
   inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
   return c;
 }
-const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, rover: 110, armed: 0, rsun: 0, hot: 40, threat: 0, spread: 0 };   // evaluation weights (draw = score of a draw, negative = contempt)
+const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, smasher: 110, armed: 0, rsun: 0, hot: 40, threat: 0, spread: 0 };   // evaluation weights (draw = score of a draw, negative = contempt)
 function evaluate(s) {                             // positive = good for Blue
   let v = 0;
   const coreOf = o => s.pieces.find(q => q.type === 'core' && q.owner === o) || CORE[o];   // a Core can sidestep
@@ -346,14 +346,14 @@ function evaluate(s) {                             // positive = good for Blue
         + (nearStation(p) && p.fuel < MAXFUEL ? 8 : 0)   // can refuel next turn
         + (toCore === 1 ? 150 : 0)                       // one step from the Core
         - (p.hot ? EV.hot : 0);                          // fully charged for a move already: it has to jump next time or it explodes
-    } else if (p.type === 'rover') x = EV.rover;   // the power piece: a worth of its own; its threat is seen by the search (smash moves)
+    } else if (p.type === 'smasher') x = EV.smasher;   // the power piece: a worth of its own; its threat is seen by the search (smash moves)
     else if (p.type === 'drone') x = 40;
     else if (p.type === 'shield') x = 40 - 15 * (p.dmg || 0);   // a cracked shield is worth less
     if (p.type === 'drone') x += EV.vfuel * p.fuel;   // a fuel pack is worth a little (it can feed an astronaut)
     v += p.owner === 0 ? x : -x;
   }
-  if (EV.threat || EV.spread) {                      // the rover: what it could smash from where it stands, and clumps of pieces that it could smash together
-    const rv = s.pieces.filter(q => q.type === 'rover');
+  if (EV.threat || EV.spread) {                      // the smasher: what it could smash from where it stands, and clumps of pieces that it could smash together
+    const rv = s.pieces.filter(q => q.type === 'smasher');
     if (rv.length) inState(s, () => {
       if (EV.threat) for (const r of rv) { let best = 0; for (const m of legal(r)) if (m.kv > best) best = m.kv; v += (r.owner === 0 ? 1 : -1) * EV.threat * best; }
       if (EV.spread) for (const side of [0, 1]) {
@@ -371,7 +371,7 @@ function cutoff(mv, ply, depth) {                  // remember a move that cause
   const kl = killers[ply] || (killers[ply] = []);
   if (kl[0] !== mv.k) { kl[1] = kl[0]; kl[0] = mv.k; }
 }
-// Quiescence search: at the end of the normal search keep playing out captures and rover smashes, so that a position is never
+// Quiescence search: at the end of the normal search keep playing out captures and smasher smashes, so that a position is never
 // judged while a piece is hanging (the plain static evaluation would miss a free capture or a pending smash). The side to
 // move may always "stand pat" (decline every capture). EV.qs = how many extra plies (0 = off).
 function qsearch(s, alpha, beta, ply, qd) {
@@ -495,7 +495,7 @@ const anims = new Map();                        // piece -> running move animati
 let ghosts = [], animUntil = 0;                 // captured pieces still shown until impact; end of all running animations
 const busy = () => performance.now() < animUntil;
 
-// the start setup (number of astronauts, rover, drone, shield) as chosen in the box; a 4-character code like 4111 travels in the link of an online game
+// the start setup (number of astronauts, smasher, drone, shield) as chosen in the box; a 4-character code like 4111 travels in the link of an online game
 // who starts: two colour swatches (radio buttons); startSel keeps the interface of a select (value, disabled, onchange)
 const startRadios = [...document.querySelectorAll('input[name=start]')];
 const startSel = {
@@ -505,11 +505,11 @@ const startSel = {
   set disabled(d) { startRadios.forEach(r => r.disabled = d); },
 };
 startRadios.forEach(r => r.onchange = () => { if (startSel.onchange) startSel.onchange(); });
-const setupEls = { start: startSel, astro: document.getElementById('nAstro'), rover: document.getElementById('cRover'), drone: document.getElementById('cDrone'), shield: document.getElementById('cShield') };
-const setupCode = () => setupEls.astro.value + (+setupEls.rover.checked) + (+setupEls.drone.checked) + (+setupEls.shield.checked);
+const setupEls = { start: startSel, astro: document.getElementById('nAstro'), smasher: document.getElementById('cSmasher'), drone: document.getElementById('cDrone'), shield: document.getElementById('cShield') };
+const setupCode = () => setupEls.astro.value + (+setupEls.smasher.checked) + (+setupEls.drone.checked) + (+setupEls.shield.checked);
 function setSetup(code) {
   if (!/^[24][01]{3}$/.test(code || '')) code = '4111';
-  setupEls.astro.value = code[0]; setupEls.rover.checked = code[1] === '1'; setupEls.drone.checked = code[2] === '1'; setupEls.shield.checked = code[3] === '1';
+  setupEls.astro.value = code[0]; setupEls.smasher.checked = code[1] === '1'; setupEls.drone.checked = code[2] === '1'; setupEls.shield.checked = code[3] === '1';
 }
 // a changed setup shows at once on the board as long as no game is running (nothing played yet, the game is over, or "New game" was not pressed yet)
 for (const el of Object.values(setupEls)) el.onchange = () => { if (!online && (!started || winner !== null || history.length === 0)) { newGame(); draw(); } };
@@ -522,8 +522,8 @@ function newGame() {
     put('core', MIDC, ROWS - 1);                  // the Core between the astronauts on the back row
     (+setupEls.astro.value === 4 ? [1, MIDC - 1, MIDC + 1, COLS - 2] : [MIDC - 1, MIDC + 1]).forEach(c => put('astro', c, ROWS - 1));   // 4 astronauts on the back row (the outer two one hex in from the edge); 2: only the inner ones
     if (setupEls.shield.checked) put('shield', MIDC, ROWS - 3);                // the shield stands two rows straight in front of the Core
-    if (setupEls.drone.checked) put('drone', 2, ROWS - 1);                    // drone and rover on the back row: A drone A Home Planet A rover A
-    if (setupEls.rover.checked) put('rover', COLS - 3, ROWS - 1);
+    if (setupEls.drone.checked) put('drone', 2, ROWS - 1);                    // drone and smasher on the back row: A drone A Home Planet A smasher A
+    if (setupEls.smasher.checked) put('smasher', COLS - 3, ROWS - 1);
   });
   add('fire', 2, toX(1, MIDC - 0), MIDC - 0);               // two one-time fuel fires in the middle row, second and second to last column
   add('fire', 2, toX(COLS - 2, MIDC - 0), MIDC - 0);
@@ -533,7 +533,7 @@ function newGame() {
   maybeAI();
   startPonder();
 }
-function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? START_FUEL : (type === 'core' || type === 'shield' || type === 'rover') ? 0 : VEH_FUEL, st: 0, dmg: 0, hl: 0, hot: 0, fresh: type === 'rover' ? 1 : 0, dir: owner ? 2 : 4 }); }   // dir: rover aim (index into HEX6). The rovers start aiming away from the board, Red up (NW) and Blue down (SW), so nothing is in line at the start
+function add(type, owner, x, y) { pieces.push({ type, owner, x, y, fuel: type === 'astro' ? START_FUEL : (type === 'core' || type === 'shield' || type === 'smasher') ? 0 : VEH_FUEL, st: 0, dmg: 0, hl: 0, hot: 0, fresh: type === 'smasher' ? 1 : 0, dir: owner ? 2 : 4 }); }   // dir: smasher aim (index into HEX6). The smashers start aiming away from the board, Red up (NW) and Blue down (SW), so nothing is in line at the start
 function say(t) { msg = t; document.getElementById('msg').textContent = t; }
 
 function posKey() {
@@ -560,9 +560,13 @@ function buildAnim(p, m, from) {                    // timeline of segments for 
              : { d: SHIFT, from, to, a0: A, a1: A, side, arc: .12 });
     tArrive = t;
     if (A) add({ d: A / 45 * TURN, from: to, to, a0: A, a1: 0, side });
-  } else {                                          // rover, drone: slide one cell, fly further
-    add(dist <= 1 ? { d: SHIFT, from, to, arc: .1 } : { d: FLY0 * .8 + 80 * dist, from, to, arc: .9 });
+  } else {                                          // smasher, drone: slide one cell, fly further
+    // the gorilla (space set; the fantasy ogre is a single picture and just slides) turns first (the back when it goes up the screen, a three-quarter view when it goes sideways or down), moves, and turns back to face us on landing
+    const gor = p.type === 'smasher' && !!ART.gorilla, A = !gor ? 0 : dy < 0 ? 180 : dy > 0 ? 45 : 90, side = dx + dy / 2 < 0 ? -1 : 1;
+    if (A) add({ d: A / 45 * TURN, from, to: from, a0: 0, a1: A, side });
+    add(dist <= 1 ? { d: SHIFT, from, to, a0: A, a1: A, side, arc: .1 } : { d: FLY0 * .8 + 80 * dist, from, to, a0: A, a1: A, side, arc: .9 });
     tArrive = t;
+    if (A) add({ d: A / 45 * TURN, from: to, to, a0: A, a1: 0, side });
   }
   return { segs, tArrive, tEnd: t };
 }
@@ -617,7 +621,7 @@ function animate(p, m, before, pos) {
       fx.push({ x: o.x, y: o.y, t0: now + tArr }); until = Math.max(until, tArr + FX_MS);
     }
   }
-  if (p.type === 'rover' && pieces.includes(p))      // the landing: a cloud of smoke on every neighbouring hex
+  if (p.type === 'smasher' && pieces.includes(p))      // the landing: a cloud of smoke on every neighbouring hex
     for (const [dx, dy] of HEX6) { const x = p.x + dx, y = p.y + dy; if (inB(x, y) && !isStation(x, y)) fx.push({ type: 'smoke', x, y, t0: now + tArr, ms: SMOKE_MS }); until = Math.max(until, tArr + SMOKE_MS); }
   animUntil = now + until + 40;
   kick();
@@ -726,7 +730,7 @@ document.getElementById('suggest').onclick = () => {   // best move for the side
     showAiInfo(turn, r);
     const m = r.mv.m;
     hint = { from: [p.x, p.y], to: [m.x, m.y] };
-    const what = { astro: 'astronaut', rover: 'rover', drone: 'drone' }[p.type];
+    const what = { astro: 'astronaut', smasher: 'smasher', drone: 'drone' }[p.type];
     say(`Suggestion: ${what} ${m.kind} (${r.depth} plies deep). Shown in yellow.`);
     draw();
     startPonder();
@@ -757,8 +761,6 @@ function loadAllArt() {
   loadArt('fire', 'AstroFire.png');
   loadArt('expl', 'AstroExplosion.png');
   loadArt('bg', 'AstroBG.png');
-  loadArt('roverBlue', 'AstroRoverBlue.png');
-  loadArt('roverRed', 'AstroRoverRed.png');
   loadArt('shield', 'AstroShield.png');
   loadArt('base', 'AstroBase.png');
   loadArt('shadow', 'AstroShadow.png');
@@ -769,6 +771,8 @@ function loadAllArt() {
   loadArt('hexes', 'AstroHexes.png');
   loadArt('banner', 'AstroBanner.png');
   loadArt('sky', 'AstroSky.png');
+  if (THEME === 'fantasy') { delete ART.gorilla; loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set (a single sprite) ...
+  else { delete ART.smasherBlue; delete ART.smasherRed; loadArt('gorilla', 'GorillaSprites.png'); }   // ... and the gorilla in the space set (GorillaSprites.png: Blue row, Red row; front, three-quarter, back)
   if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png'); else delete ART.crystal;   // the one-time fuel fires are mana crystals in the fantasy set
   showTheme();
 }
@@ -844,7 +848,7 @@ function redrawAll() { drawSpace(); if (pieces) draw(); }
 addEventListener('resize', drawSpace);
 
 // ---------- effects ----------
-const fx = [];                                       // capture explosions { x, y, t0 } and smoke clouds { type: 'smoke', x, y, t0, ms } (the rover's landing)
+const fx = [];                                       // capture explosions { x, y, t0 } and smoke clouds { type: 'smoke', x, y, t0, ms } (the smasher's landing)
 const FX_MS = 650, SMOKE_MS = 900;
 let looping = false;
 function loop() {
@@ -870,7 +874,7 @@ function draw() {
 }
 
 const cxy = (q, r) => [ctrX(q, r), ctrY(r)];         // pixel centre of a (possibly fractional) axial position
-// "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes, and for a rover also every hex around its landing hexes: its destruction fields); an edge that is a boundary of both colours is dithered
+// "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes, and for a smasher also every hex around its landing hexes: its destruction fields); an edge that is a boundary of both colours is dithered
 const showRanges = document.getElementById('showRanges');
 showRanges.onchange = () => draw();
 const RANGE_KINDS = { walk: 1, capture: 1, jump: 1, push: 1, cover: 1, smash: 1 };
@@ -884,7 +888,7 @@ function rangeBoundary() {
     const ms = legal(p).filter(m => RANGE_KINDS[m.kind]);
     if (!ms.length) continue;
     reg[p.owner].add(id(p.x, p.y)); for (const m of ms) reg[p.owner].add(id(m.x, m.y));
-    if (p.type === 'rover') for (const m of ms) for (const [dx, dy] of HEX6)      // the rover's destruction fields: every hex around each landing hex
+    if (p.type === 'smasher') for (const m of ms) for (const [dx, dy] of HEX6)      // the smasher's destruction fields: every hex around each landing hex
       if (inB(m.x + dx, m.y + dy) && !isStation(m.x + dx, m.y + dy)) reg[p.owner].add(id(m.x + dx, m.y + dy));
   }
   for (let y = 0; y < ROWS; y++) for (let col = 0; col < COLS; col++) {
@@ -955,7 +959,7 @@ function drawField(now, vis) {
       g.setLineDash([6, 6]); g.strokeStyle = '#111'; g.lineWidth = 6; g.stroke(); g.strokeStyle = '#9fe3ff'; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
     }
   }
-  if (drag && drag.p.type === 'rover' && hover) {      // preview: everything the rover would destroy if it landed on the hovered hex
+  if (drag && drag.p.type === 'smasher' && hover) {      // preview: everything the smasher would destroy if it landed on the hovered hex
     const m = drag.moves.find(m => m.x === hover.x && m.y === hover.y);
     if (m) {
       const victims = smashList(drag.p, m.x, m.y), t = at(m.x, m.y);
@@ -1002,7 +1006,7 @@ function drawField(now, vis) {
     const k = Math.min(5, Math.floor((now - e.t0) / FX_MS * 6));
     sprite(ART.expl, R.boom[k], ctrX(e.x, e.y), ctrY(e.y) + 45 * PS, 100 * PS);
   }
-  if (drag && drag.p.type === 'rover' && hover) {      // the destruction fields of the hovered landing hex: little smoke clouds drifting over every neighbouring hex
+  if (drag && drag.p.type === 'smasher' && hover) {      // the destruction fields of the hovered landing hex: little smoke clouds drifting over every neighbouring hex
     const m = drag.moves.find(m => m.x === hover.x && m.y === hover.y);
     if (m) for (const [dx, dy] of HEX6) {
       const nx = m.x + dx, ny = m.y + dy; if (!inB(nx, ny) || isStation(nx, ny)) continue;
@@ -1017,6 +1021,8 @@ function drawField(now, vis) {
 
 // astronaut sheet frames, right-facing (mirrored for left): front, 45°, profile, 135°, back
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
+// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right, mirrored for left), back
+const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
 // where the frames sit in each art set (the sheets of the fantasy set are laid out differently)
 const THEME_RECTS = {
   space: { frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
@@ -1079,9 +1085,16 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
     g.restore();
   } else if (p.type === 'drone') {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, R.drone, cx, by + 2 * s, 76 * s);
-  } else if (p.type === 'rover') {
+  } else if (p.type === 'smasher' && ART.gorilla) {       // the gorilla (space set): front at rest, three-quarter or back while it turns (frames picked from the animation angle)
+    const side = vis ? vis.side : 1, fi = [0, 1, 1, 2, 2][Math.max(0, Math.min(4, vis ? Math.round(vis.ang / 45) : 0))];
+    const r = GORILLA[o === 0 ? 0 : 1][fi], gk = 76 * s / 162, w = r[2] * gk, h = r[3] * gk;
+    g.save();
+    if (side < 0 && fi === 1) { g.translate(cx, 0); g.scale(-1, 1); g.translate(-cx, 0); }
+    blit(ART.gorilla, r[0], r[1], r[2], r[3], cx - w / 2, by + 2 * s - h, w, h);
+    g.restore();
+  } else if (p.type === 'smasher') {                  // fantasy: the ogre, one picture per team
     const rk = s * .95 * .92;
-    blit(o === 0 ? ART.roverBlue : ART.roverRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
+    blit(o === 0 ? ART.smasherBlue : ART.smasherRed, cx - 52 * rk, by + 2 * s - 82 * rk, 110 * rk, 92 * rk);
   } else {                                           // core: a planet
     const act = started && winner === null && o === turn;                    // the Core of the side to move pumps: fade + scale up and down
     const w = act ? .5 + .5 * Math.sin(now / 280) : 0, h = 80 * s * (1 + .12 * w);
@@ -1091,7 +1104,7 @@ function drawPiece(p, cx, cy, s, lifted, now, vis) {
   g.filter = 'none';
   if (p.st > 0) blit(ART.zzz, cx - 4 * s, cy - 66 * s, 74 * s, 72 * s);          // zzz in crayon lettering
   if (p.hot) blit(ART.bang, cx + 6 * s, cy - 63 * s, 40 * s, 50 * s);              // red exclamation mark above the head
-  if (p.type !== 'core' && p.type !== 'rover') {      // fuel = little flames next to the feet (the drone has one slot; the rover needs no fuel)
+  if (p.type !== 'core' && p.type !== 'smasher') {      // fuel = little flames next to the feet (the drone has one slot; the smasher needs no fuel)
     const slots = fuelCap(p);
     for (let i = 0; i < slots; i++) {
       if (i >= p.fuel) g.filter = 'grayscale(1) opacity(.45)';
