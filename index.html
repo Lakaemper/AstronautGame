@@ -75,6 +75,7 @@
     <select id="depth"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select>
     double moves</label><br>
   <label><input type="checkbox" id="showRanges" checked> Display ranges</label><br>
+  <label title="Rotates the red figures by 180 degrees, for two humans on one flat screen with Red sitting on the opposite side"><input type="checkbox" id="flipRed"> Flip red figures</label><br>
   <button id="undo">Undo move</button>
   <button id="suggest">Suggest move</button>
   <button id="endgame">End game</button>
@@ -877,6 +878,12 @@ const cxy = (q, r) => [ctrX(q, r), ctrY(r)];         // pixel centre of a (possi
 // "Display ranges": per colour the outline of every hex one of its pieces can move to (plus the pieces' own hexes, and for a smasher also every hex around its landing hexes: its destruction fields); an edge that is a boundary of both colours is dithered
 const showRanges = document.getElementById('showRanges');
 showRanges.onchange = () => draw();
+// "Flip red figures": Red's pieces are drawn rotated by 180 degrees (two humans at one flat screen, Red on the opposite side). The choice is remembered in the browser.
+const flipRedBox = document.getElementById('flipRed');
+let flipRed = false;
+try { flipRed = localStorage.getItem('astroFlipRed') === '1'; } catch (e) {}
+flipRedBox.checked = flipRed;
+flipRedBox.onchange = () => { flipRed = flipRedBox.checked; try { localStorage.setItem('astroFlipRed', flipRed ? '1' : '0'); } catch (e) {} draw(); };
 const RANGE_KINDS = { walk: 1, capture: 1, jump: 1, push: 1, cover: 1, smash: 1 };
 let rangeKey = '', rangeEdges = [];
 function rangeBoundary() {
@@ -1025,10 +1032,10 @@ const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0
 const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
 // where the frames sit in each art set (the sheets of the fantasy set are laid out differently)
 const THEME_RECTS = {
-  space: { frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
-  fantasy: {"frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
+  space: { flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]], flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]], flameK: [.78, .92, .95, 1], frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
+  fantasy: {"flame": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameN": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameK": [1, 1, 1, 1], "frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
 };
-function applyThemeRects() { const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco }); }
+function applyThemeRects() { const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco, flame: t.flame, flameN: t.flameN }); }
 applyThemeRects();
 function drawShield(p, cx, cy, s, vis) {            // glass dome seen from above (a picture per team and crack stage), a circle of hex size
   const L = vis ? vis.lift : 0, f = (p.owner === 1 ? 3 : 0) + Math.min(2, p.dmg || 0);
@@ -1038,8 +1045,8 @@ function drawShield(p, cx, cy, s, vis) {            // glass dome seen from abov
   g.restore();
 }
 // The sheet's flames hang down from a jetpack, so they are flipped here to burn upwards (base on the ground at baseY).
-const FLAME_K = [.78, .92, .95, 1];                 // the short, chubby first flame would look far bigger than the others at the same height: shrink it so all four have about the same area
-function flameUp(cx, baseY, f, h) { h *= FLAME_K[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }   // every frame gets the same height: only the shape flickers, not the size
+// FLAME_K (the size factor that makes the four flames look equally big) is now THEME_RECTS[THEME].flameK: the space flames are of different lengths, the fantasy flames are all alike
+function flameUp(cx, baseY, f, h) { h *= THEME_RECTS[THEME].flameK[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }   // every frame gets the same height: only the shape flickers, not the size
 function fireGlow(cx, cy, r, a) { g.save(); g.globalAlpha *= a; blit(ART.glow, 0, 0, 256, 256, cx - r, cy - r, 2 * r, 2 * r); g.restore(); }
 // A flame shape is picked at random (not in a loop) every ~120 ms; each flame has its own rhythm. Sizes and the glow never change, so nothing pumps.
 const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
@@ -1055,7 +1062,11 @@ function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one
   if (imgOk(ART.crystal)) { blit(ART.crystal, 0, 0, 160, 160, cx - 34 * s, cy + 32 * s - 68 * s, 68 * s, 68 * s); return; }   // fantasy: a mana crystal
   flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
 }
-function drawPiece(p, cx, cy, s, lifted, now, vis) {
+function drawPiece(p, cx, cy, s, lifted, now, vis) {   // a piece, or (with 'Flip red figures') a red piece turned upside down around the middle of its hex
+  if (flipRed && p.owner === 1) { g.save(); g.translate(cx, cy); g.rotate(Math.PI); g.translate(-cx, -cy); drawPieceUp(p, cx, cy, s, lifted, now, vis); g.restore(); }
+  else drawPieceUp(p, cx, cy, s, lifted, now, vis);
+}
+function drawPieceUp(p, cx, cy, s, lifted, now, vis) {
   if (p.type === 'fire') { drawFire(p, cx, cy, s, now); return; }
   if (p.type === 'shield') { drawShield(p, cx, cy, s, vis); return; }
   const o = p.owner, by = cy + 36 * s;               // by = feet line

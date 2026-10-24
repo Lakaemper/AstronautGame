@@ -100,8 +100,8 @@ function sprite(im, r, cx, by, h) {
 }
 function seeded(n) { let s = n; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) % 4], cx, by, h); }
-const FLAME_K = [.78, .92, .95, 1];
-function flameUp(cx, baseY, f, h) { h *= FLAME_K[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }
+// FLAME_K (the size factor that makes the four flames look equally big) is now THEME_RECTS[THEME].flameK: the space flames are of different lengths, the fantasy flames are all alike
+function flameUp(cx, baseY, f, h) { h *= THEME_RECTS[THEME].flameK[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }
 function fireGlow(cx, cy, r, a) { g.save(); g.globalAlpha *= a; blit(ART.glow, 0, 0, 256, 256, cx - r, cy - r, 2 * r, 2 * r); g.restore(); }
 const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
 function drawStation(cx, cy, s, now) {              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
@@ -125,10 +125,10 @@ function drawShield(p, cx, cy, s, vis) {            // glass dome seen from abov
 }
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
 const THEME_RECTS = {
-  space: { frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
-  fantasy: {"frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
+  space: { flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]], flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]], flameK: [.78, .92, .95, 1], frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
+  fantasy: {"flame": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameN": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameK": [1, 1, 1, 1], "frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
 };
-{ const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco }); }
+{ const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco, flame: t.flame, flameN: t.flameN }); }
 function drawPiece(p, cx, cy, s, lifted, now, vis) {
   if (p.type === 'fire') { drawFire(p, cx, cy, s, now); return; }
   if (p.type === 'shield') { drawShield(p, cx, cy, s, vis); return; }
