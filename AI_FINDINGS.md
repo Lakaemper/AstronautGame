@@ -144,3 +144,22 @@ damage point), so two shots (two tempi) never pay off, and nothing in the evalua
 
 Ideas: give the evaluation a term for pieces under an enemy or own shield (protected = worth more), then shield shots may start to appear; look
 at the draws (which rule produces repetition?).
+
+## Smasher value in the evaluation (2026-10-25, branch feature/fantasyOption)
+
+Question: is `EV.smasher` = 110 too low? (An astronaut counts 100 + 55 per fuel + 16 per row + closeness, so about 160 to 200 at the start.)
+Method: AI-vs-AI duels with the real engine in 14 Web Workers, 0.3 s and at most 8 plies per move, 150-ply cap, default setup (4 astronauts,
+smasher, drone, shield), the variant (`EV.smasher` = V) against the current weights (110), the colour of the variant swapped every game.
+Small samples: a difference of less than about 6 games per 30 is noise.
+
+| V (variant) | games | variant wins | 110 wins | draws / capped | variant smasher moves per game (110: moves) | variant smashes per game (110: smashes) |
+|---|---|---|---|---|---|---|
+| 160 | 30 | 15 | 9 | 4 / 2 | 6.5 (3.7) | 1.6 (0.7) |
+| 220 | 30 | 22 | 7 | 1 / 0 | 6.0 (2.5) | 2.1 (0.7) |
+| 300 | 24 | 17 | 6 | 1 / 0 | 7.0 (1.8) | 2.3 (0.7) |
+
+Reading: every higher value beats 110, and the AI with 110 hardly uses its smasher (2 to 4 moves per game, 0.7 smashes). 220 and 300 both win about
+three games in four, 160 is only slightly ahead (15 : 9). 220 is the first value that is clearly better, and 300 shows no further gain, so about
+220 to 250 looks right (an astronaut with 1 fuel and a little advancement is worth 165 to 200). Not tested: a value that depends on the number of
+astronauts left (the fewer astronauts, the more each one is worth because only astronauts can win), and the combination with the optional `threat`
+and `spread` terms. The test itself changed nothing; afterwards `EV.smasher` was set to 220 on request.

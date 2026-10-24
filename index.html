@@ -332,7 +332,7 @@ function child(s, mv) {
   inState(c, () => { step(c.pieces[mv.i], mv.m); c.turn = turn; c.winner = winner; });
   return c;
 }
-const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, smasher: 110, armed: 0, rsun: 0, hot: 40, threat: 0, spread: 0 };   // evaluation weights (draw = score of a draw, negative = contempt)
+const EV = { astro: 100, fuel: 55, vfuel: 6, adv: 16, near: 5, draw: -600, qs: 4, smasher: 220, armed: 0, rsun: 0, hot: 40, threat: 0, spread: 0 };   // evaluation weights (draw = score of a draw, negative = contempt)
 function evaluate(s) {                             // positive = good for Blue
   let v = 0;
   const coreOf = o => s.pieces.find(q => q.type === 'core' && q.owner === o) || CORE[o];   // a Core can sidestep
