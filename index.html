@@ -555,7 +555,7 @@ function drawCheck() {                             // stalemate and threefold re
   return '';
 }
 // ---------- move animations ----------
-const TURN = 75, SHIFT = 300, FLY0 = 520;           // ms per 45° turn, per one-cell shift, base flight time
+const TURN = 75, SHIFT = 300, FLY0 = 520, CHARGE = 450;           // ms per 45° turn, per one-cell shift, base flight time
 function buildAnim(p, m, from) {                    // timeline of segments for the moving piece; the game state is already updated
   const to = { x: p.x, y: p.y }, dx = to.x - from.x, dy = to.y - from.y, dist = hexDist(from.x, from.y, to.x, to.y);
   const segs = []; let tArrive = 0, t = 0;
@@ -569,12 +569,12 @@ function buildAnim(p, m, from) {                    // timeline of segments for 
     tArrive = t;
     if (A) add({ d: A / 45 * TURN, from: to, to, a0: A, a1: 0, side });
   } else {                                          // smasher, drone: slide one cell, fly further
-    // the gorilla (space set; the fantasy ogre is a single picture and just slides) turns first (the back when it goes up the screen, a three-quarter view when it goes sideways or down), moves, and turns back to face us on landing
-    const gor = p.type === 'smasher' && !!ART.gorilla, A = !gor ? 0 : dy < 0 ? 180 : dy > 0 ? 45 : 90, side = dx + dy / 2 < 0 ? -1 : 1;
-    if (A) add({ d: A / 45 * TURN, from, to: from, a0: 0, a1: A, side });
+    // the gorilla (space set; the fantasy ogre is a single picture and just slides): front at rest, then the JUMPING picture (ang 90) while it moves, then the LANDING picture (ang 180: arms up,
+    // charging the smash) for CHARGE ms, then the front picture again = the smash itself (tArrive: the dust and the captures appear here)
+    const gor = p.type === 'smasher' && !!ART.gorilla, A = gor ? 90 : 0, side = dx + dy / 2 < 0 ? -1 : 1;
     add(dist <= 1 ? { d: SHIFT, from, to, a0: A, a1: A, side, arc: .1 } : { d: FLY0 * .8 + 80 * dist, from, to, a0: A, a1: A, side, arc: .9 });
+    if (gor) add({ d: CHARGE, from: to, to, a0: 180, a1: 180, side });
     tArrive = t;
-    if (A) add({ d: A / 45 * TURN, from: to, to, a0: A, a1: 0, side });
   }
   return { segs, tArrive, tEnd: t };
 }
@@ -781,7 +781,7 @@ function loadAllArt() {
   loadArt('banner', 'AstroBanner.png');
   loadArt('sky', 'AstroSky.png');
   if (THEME !== 'space') { delete ART.gorilla; loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set, a hexagon in the abstract set (a single sprite) ...
-  else { delete ART.smasherBlue; delete ART.smasherRed; loadArt('gorilla', 'GorillaSprites.png'); }   // ... and the gorilla in the space set (GorillaSprites.png: Blue row, Red row; front, three-quarter, back)
+  else { delete ART.smasherBlue; delete ART.smasherRed; loadArt('gorilla', 'GorillaSprites.png'); }   // ... and the gorilla in the space set (GorillaSprites.png: Blue row, Red row; front, jumping, landing)
   if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png'); else delete ART.crystal;   // the one-time fuel fires are mana crystals in the fantasy set
   showTheme();
 }
@@ -1036,8 +1036,8 @@ function drawField(now, vis) {
 
 // astronaut sheet frames, right-facing (mirrored for left): front, 45°, profile, 135°, back
 const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0, 88, 160], [406, 0, 105, 160]];
-// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right, mirrored for left), back
-const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
+// the gorilla sheet (574 x 362): row 0 = Blue, row 1 = Red; frames = front, jumping (faces right, mirrored for left), landing (arms up: charging the smash)
+const GORILLA = [[[6, 25, 172, 149], [192, 14, 183, 156], [387, 4, 174, 168]], [[6, 195, 171, 149], [192, 187, 183, 156], [387, 181, 174, 167]]];
 // where the frames sit in each art set (the sheets of the fantasy set are laid out differently)
 const THEME_RECTS = {
   space: { flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]], flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]], flameK: [.78, .92, .95, 1], frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
@@ -1116,7 +1116,7 @@ function drawPieceUp(p, cx, cy, s, lifted, now, vis) {
     g.restore();
   } else if (p.type === 'drone') {
     sprite(o === 0 ? ART.shipBlue : ART.shipRed, R.drone, cx, by + 2 * s, 76 * s);
-  } else if (p.type === 'smasher' && ART.gorilla) {       // the gorilla (space set): front at rest, three-quarter or back while it turns (frames picked from the animation angle)
+  } else if (p.type === 'smasher' && ART.gorilla) {       // the gorilla (space set): front at rest, jumping (ang 90) or landing/charging (ang 180) during the move (frame picked from the animation angle)
     const side = vis ? vis.side : 1, fi = [0, 1, 1, 2, 2][Math.max(0, Math.min(4, vis ? Math.round(vis.ang / 45) : 0))];
     const r = GORILLA[o === 0 ? 0 : 1][fi], gk = 76 * s / 162, w = r[2] * gk, h = r[3] * gk;
     g.save();

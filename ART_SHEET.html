@@ -80,8 +80,8 @@ loadArt('banner', 'AstroBanner.png');
 loadArt('sky', 'AstroSky.png');
 if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png');
 const imgOk = im => im && im.complete && im.naturalWidth;
-// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right), back
-const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
+// the gorilla sheet (574 x 362): row 0 = Blue, row 1 = Red; frames = front, jumping (faces right), landing (arms up: charging the smash)
+const GORILLA = [[[6, 25, 172, 149], [192, 14, 183, 156], [387, 4, 174, 168]], [[6, 195, 171, 149], [192, 187, 183, 156], [387, 181, 174, 167]]];
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
@@ -301,7 +301,7 @@ add('1. Image files in the art folder (the original seven)', 'The seven original
 /* 1b. the files of the pieces and the board */
 add('1b. Image files for pieces, effects and the board', 'The files that used to be painted by code (the tiles are now also baked into the hexes). Each is drawn at twice the size of the game cell (the tiles and the sky at game size). Sheets hold several frames side by side: the shield (blue and red, undamaged and two crack stages), the team bases (blue, red, neutral) and the five ground tiles.', 1100, 1100, () => {
   const put = (im, x, y, name, w, h, k = 1) => { small(x, y - 14, name); g.fillStyle = '#2a2f3a'; g.fillRect(x - 3, y - 3, w * k + 6, h * k + 6); if (ready(im)) g.drawImage(im, x, y, w * k, h * k); };
-  put(ART.gorilla, 10, 30, 'GorillaSprites.png (the smasher: Blue row, Red row; front, three-quarter, back)', 590, 370, .6);
+  put(ART.gorilla, 10, 30, 'GorillaSprites.png (the smasher: Blue row, Red row; front, jumping, landing)', 574, 362, .6);
   put(ART.smasherBlue, 380, 30, 'AstroSmasherBlue.png (fantasy)', 220, 184, .5); put(ART.smasherRed, 500, 30, 'AstroSmasherRed.png (fantasy)', 220, 184, .5);
   put(ART.shadow, 650, 30, 'AstroShadow.png', 160, 60); put(ART.hotring, 650, 120, 'AstroHotRing.png', 200, 80); put(ART.bang, 880, 30, 'AstroBang.png', 80, 100); put(ART.zzz, 980, 30, 'AstroZzz.png', 148, 144, .7);
   put(ART.shield, 10, 260, 'AstroShield.png (blue 0, 1, 2 cracks, red 0, 1, 2 cracks)', 1248, 208, .85);

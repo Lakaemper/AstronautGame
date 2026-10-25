@@ -91,8 +91,8 @@ loadArt('banner', 'AstroBanner.png');
 loadArt('sky', 'AstroSky.png');
 if (THEME === 'fantasy') loadArt('crystal', 'AstroCrystal.png');
 const imgOk = im => im && im.complete && im.naturalWidth;
-// the gorilla sheet (590 x 370): row 0 = Blue, row 1 = Red; frames = front, three-quarter (faces right), back
-const GORILLA = [[[11, 22, 190, 162], [213, 25, 179, 160], [405, 25, 180, 153]], [[11, 192, 189, 165], [217, 195, 175, 162], [404, 196, 181, 155]]];
+// the gorilla sheet (574 x 362): row 0 = Blue, row 1 = Red; frames = front, jumping (faces right), landing (arms up: charging the smash)
+const GORILLA = [[[6, 25, 172, 149], [192, 14, 183, 156], [387, 4, 174, 168]], [[6, 195, 171, 149], [192, 187, 183, 156], [387, 181, 174, 167]]];
 const blit = (im, ...a) => { if (imgOk(im)) g.drawImage(im, ...a); };   // draw a picture (or a part of it) once it has loaded
 // source rectangles [x, y, w, h] inside the sheets
 const R = {
