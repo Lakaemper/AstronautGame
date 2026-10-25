@@ -288,7 +288,7 @@ const startPieces = () => {
   out.push(F(q1, r1), F(q2, r2), ST(qs, rs));
   return out;
 };
-const boardCells = () => { const out = []; for (let row = 0; row < 9; row++) for (let col = row & 1 ? 0 : 1; col < 8; col++) out.push(off2ax(col, row)); return out; };
+const boardCells = () => { const out = []; for (let row = 0; row < 9; row++) for (let col = 0; col < 9 - (row & 1); col++) if (!((row === 0 || row === 8) && (col === 0 || col === 8))) out.push(off2ax(col, row)); return out; };
 const nb = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) for (let s = 1; s <= n; s++) out.push([q + dq * s, r + dr * s]); return out; };
 
@@ -296,7 +296,7 @@ const CARDS = [
   { wide: true, title: 'The pieces', gallery: true,
     text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a smasher (the power piece), a drone, a shield and a Home Planet. Astronauts and drones carry <b>fuel</b>, shown as little flames next to their feet (grey = empty); the smasher needs none. The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
   { wide: true, title: 'The start position', board: true,
-    text: '<p>Blue moves first. The board has 9 rows. Rows of 7 and 8 hexes alternate (7-8-7-8-7-8-7-8-7, 67 hexes in all); every odd row is shifted half a hex. Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
+    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
 
   { title: 'Astronaut: walking', draw: [{ pieces: [A(0, 0, 0, 1)], hl: nb(0, 0).map(c => [...c, COL.walk]), labels: [[0, 0, 'free', 38, 13]] }],
     text: '<p>An astronaut can always step to any of the <b>6 neighbouring hexes</b>. One step is free and needs no fuel.</p>' },
@@ -351,7 +351,7 @@ function build() {
     const card = el('section', 'card' + (c.wide ? ' wide' : '')); card.appendChild(el('h2', '', c.title));
     const pics = el('div', 'pics');
     if (c.gallery) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => galleryDraw(cv)); }
-    else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.5, oy: 60, cells: boardCells(), pieces: startPieces() })); }
+    else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.3, oy: 60, cells: boardCells(), pieces: startPieces() })); }
     else for (const spec of c.pair || c.draw || []) { const fig = el('figure'); const cv = el('canvas'); fig.appendChild(cv); pics.appendChild(fig); jobs.push(() => diagram(cv, spec)); }
     card.appendChild(pics); card.appendChild(el('div', '', c.text)); root.appendChild(card);
   }
