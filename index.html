@@ -92,6 +92,7 @@
 
 <script id="engine">
 // Game engine: rules, move generation and AI search. No DOM access, so it also runs inside the worker.
+let DRONE_RANGE = 99;                           // hexes a drone may glide per move along a line (TEST 2026-10-25: unlimited; the old rule was 3)
 const COLS = 9, ROWS = 9, CELL = 100, MAXFUEL = 3, START_FUEL = 1, VEH_FUEL = 1;   // a drone carries 1 unit (a smasher needs no fuel)
 // The board is a rectangle of COLS x ROWS pointy-top hexes (77 cells: the shifted odd rows lose their last hex, which would stick out on the right); every odd row is shifted right by half a hex. Positions are stored
 // in axial coordinates (x = q + AXS, y = row) so that all six directions are the same constant steps everywhere:
@@ -117,7 +118,7 @@ const at = (x, y) => { let r; for (const p of pieces) if (p.x === x && p.y === y
 const covered = p => p.type !== 'shield' && pieces.some(q => q.type === 'shield' && q.x === p.x && q.y === p.y);
 // an own shield with nothing under it can be entered by the owner's other pieces (they then stand under it)
 const freeShield = (t, o) => !!t && t.type === 'shield' && t.owner === o && !pieces.some(q => q !== t && q.x === t.x && q.y === t.y && q.type !== 'fire');
-const inB = (x, y) => y >= 0 && y < ROWS && colOf(x, y) >= ((y === 0 || y === ROWS - 1) ? 1 : 0) && colOf(x, y) < COLS - (y & 1) - ((y === 0 || y === ROWS - 1) ? 1 : 0);   // the four corner hexes are cut off   // the shifted (odd) rows are one hex shorter, so the right edge is almost straight
+const inB = (x, y) => y >= 0 && y < ROWS && colOf(x, y) >= (y & 1 ? 0 : 1) && colOf(x, y) < COLS - 1;   // narrow board (2026-10-25): rows of 7 and 8 hexes alternate (7-8-7-8-7-8-7-8-7 = 67 hexes); the sticking-out outer hexes of the even rows are gone
 const isStation = (x, y) => x === STATION.x && y === STATION.y;
 const nearStation = p => hexDist(p.x, p.y, STATION.x, STATION.y) === 1;
 // How far a jetpack has to fly: the sun cannot be crossed, even in the air. Two hexes on a straight line with the sun strictly between
@@ -184,7 +185,7 @@ function legal(p) {
     }
   } else if (p.type === 'drone') {
     for (const [dx, dy] of HEX6) {
-      for (let s = 1; s <= 3; s++) {
+      for (let s = 1; s <= DRONE_RANGE; s++) {
         const x = p.x + dx * s, y = p.y + dy * s;
         if (!inB(x, y) || isStation(x, y)) break;
         const t = A(x, y);
@@ -484,8 +485,8 @@ function ponderSearch(maxPlies, post) {
 const cv = document.getElementById('c'), g = cv.getContext('2d');
 // pixel geometry of the hex rectangle (pointy-top hexes, axial coordinates)
 const HS = 54, HW = Math.sqrt(3) * HS, PAD = 8;     // hex size (centre to corner), hex width
-const OX = PAD + HW / 2, OY = PAD + HS;              // pixel centre of column 0 in row 0
-const W = Math.round(2 * PAD + HW * COLS), H = Math.round(2 * PAD + 1.5 * HS * (ROWS - 1) + 2 * HS);
+const OX = PAD, OY = PAD + HS;              // pixel centre of column 0 in row 0
+const W = Math.round(2 * PAD + HW * (COLS - 1)), H = Math.round(2 * PAD + 1.5 * HS * (ROWS - 1) + 2 * HS);
 const PS = HW / 100;                                 // piece scale: pieces and sprites are drawn for 100-pixel cells
 const ctrX = (x, r) => OX + HW * (x - AXS + r / 2), ctrY = r => OY + 1.5 * HS * r;   // linear, so fractional coordinates work too
 cv.width = W; cv.height = H;

@@ -288,7 +288,7 @@ const startPieces = () => {
   out.push(F(q1, r1), F(q2, r2), ST(qs, rs));
   return out;
 };
-const boardCells = () => { const out = []; for (let row = 0; row < 9; row++) for (let col = 0; col < 9 - (row & 1); col++) if (!((row === 0 || row === 8) && (col === 0 || col === 8))) out.push(off2ax(col, row)); return out; };
+const boardCells = () => { const out = []; for (let row = 0; row < 9; row++) for (let col = row & 1 ? 0 : 1; col < 8; col++) out.push(off2ax(col, row)); return out; };
 const nb = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 const lineCells = (q, r, n) => { const out = []; for (const [dq, dr] of DIRS) for (let s = 1; s <= n; s++) out.push([q + dq * s, r + dr * s]); return out; };
 
@@ -296,7 +296,7 @@ const CARDS = [
   { wide: true, title: 'The pieces', gallery: true,
     text: '<p>Each side (<b>Blue</b> at the bottom, <b>Red</b> at the top) starts with 4 astronauts, a smasher (the power piece), a drone, a shield and a Home Planet. Astronauts and drones carry <b>fuel</b>, shown as little flames next to their feet (grey = empty); the smasher needs none. The big fire in the middle is the permanent <b>fuel station</b>, and the two small fires are <b>one-time fuel fires</b>.</p>' },
   { wide: true, title: 'The start position', board: true,
-    text: '<p>Blue moves first. The board has 9 rows. Every odd row is shifted half a hex to the right and is one hex shorter (8 instead of 9), so the right edge is almost straight (73 hexes in all: the four corner hexes are cut off). Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
+    text: '<p>Blue moves first. The board has 9 rows. Rows of 7 and 8 hexes alternate (7-8-7-8-7-8-7-8-7, 67 hexes in all); every odd row is shifted half a hex. Astronauts start with 1 fuel and drones are full. The shields stand two rows in front of the Home Planets.</p>' },
 
   { title: 'Astronaut: walking', draw: [{ pieces: [A(0, 0, 0, 1)], hl: nb(0, 0).map(c => [...c, COL.walk]), labels: [[0, 0, 'free', 38, 13]] }],
     text: '<p>An astronaut can always step to any of the <b>6 neighbouring hexes</b>. One step is free and needs no fuel.</p>' },
@@ -311,6 +311,12 @@ const CARDS = [
     text: '<p>The fuel station cannot be entered, and jetpacks cannot fly over it either. The hex on the <b>far side</b> of the fire is therefore <b>3 steps</b> away, not 2: the jump has to go around, and costs 2 fuel.</p>' },
   { title: 'Refuelling at the central fire', draw: [{ pieces: [ST(0, 0), A(-1, 0, 0, 1)], hl: [[0, 0, COL.refuel]], arrows: [{ path: [[-1, 0], [0, 0]] }], labels: [[0, 0, '+1 fuel', 46, 13]] }],
     text: '<p>An astronaut or drone that stands <b>next to the central fire</b> refuels by being dragged <b>onto the fire</b>. It stays where it is and gets +1 fuel (astronaut: up to 3, drone: up to 1). Refuelling uses your whole move.</p>' },
+  { wide: true, title: 'Drone: gliding and pushing', pair: [
+      { w: 420, h: 420, radius: 3, pieces: [D(0, 0, 0, 1), A(2, 0, 1, 1)],
+        hl: [...ring(3)].filter(c => (c[0] === 0 || c[1] === 0 || c[0] + c[1] === 0) && dist([0, 0], c) >= 1 && !(c[0] >= 2 && c[1] === 0)).map(c => [...c, COL.walk]).concat([[2, 0, COL.push]]),
+        arrows: [{ path: [[0, 0], [2, 0]] }], labels: [[0, 0, 'before', 40, 12]] },
+      { w: 420, h: 420, radius: 3, pieces: [D(2, 0, 0, 1), A(3, 0, 1, 1, { st: 1 })], labels: [[3, 0, 'stunned', 40, 12]] }],
+    text: '<ul><li>A drone glides <b>any distance</b> along any of the <b>six straight lines</b> (green), over empty hexes only. It cannot jump, and it cannot capture by moving; it stops in front of any piece and before the central fire and the board edge.</li><li><b>Push:</b> glide onto an <b>enemy</b> piece in a line and the drone takes its hex while the enemy is shoved <b>one hex further</b> along the same line. The pushed piece is <b>stunned</b> for its next turn (washed out) and cannot move.</li><li>The push <b>destroys</b> the enemy if it is shoved <b>off the board</b>, <b>into the central fire</b>, or against <b>one of your own pieces</b> behind it. A push is not possible when another enemy piece stands behind the target, or when the target is covered by a shield.</li><li>A drone carries <b>one unit</b> of fuel (see below) and can never win the game.</li></ul>' },
   { title: 'Taking fuel from the drone', draw: [{ pieces: [A(0, 0, 0, 1), D(1, 0, 0, 1)], hl: [[1, 0, COL.feed]], arrows: [{ path: [[0, 0], [1, 0]] }], labels: [[1, 0, 'drone is empty after', 46, 12]] }],
     text: '<p>An astronaut next to its <b>own</b> drone can drag onto it and take its <b>one unit</b> of fuel: the astronaut gets +1 and the drone is empty afterwards. Nobody moves.</p>' },
   { title: 'Overcharge: use it or lose it', draw: [{ w: 400, h: 320, radius: 2, pieces: [A(0, 0, 0, 3, { hot: 1 })], hl: [[2, 0, COL.jump], [-2, 0, COL.jump], [0, 2, COL.jump], [0, -2, COL.jump]], arrows: [{ path: [[0, 0], [2, 0]], dashed: true, color: '#35d0ff' }], labels: [[2, 0, 'jump: safe', 40, 12]] }],
@@ -345,7 +351,7 @@ function build() {
     const card = el('section', 'card' + (c.wide ? ' wide' : '')); card.appendChild(el('h2', '', c.title));
     const pics = el('div', 'pics');
     if (c.gallery) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => galleryDraw(cv)); }
-    else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.3, oy: 60, cells: boardCells(), pieces: startPieces() })); }
+    else if (c.board) { const cv = el('canvas'); pics.appendChild(cv); jobs.push(() => diagram(cv, { w: 640, h: 520, ox: 80 + HW * 0.5, oy: 60, cells: boardCells(), pieces: startPieces() })); }
     else for (const spec of c.pair || c.draw || []) { const fig = el('figure'); const cv = el('canvas'); fig.appendChild(cv); pics.appendChild(fig); jobs.push(() => diagram(cv, spec)); }
     card.appendChild(pics); card.appendChild(el('div', '', c.text)); root.appendChild(card);
   }

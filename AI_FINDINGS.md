@@ -163,3 +163,18 @@ three games in four, 160 is only slightly ahead (15 : 9). 220 is the first value
 220 to 250 looks right (an astronaut with 1 fuel and a little advancement is worth 165 to 200). Not tested: a value that depends on the number of
 astronauts left (the fewer astronauts, the more each one is worth because only astronauts can win), and the combination with the optional `threat`
 and `spread` terms. The test itself changed nothing; afterwards `EV.smasher` was set to 220 on request.
+
+## Drone range: 3 hexes against unlimited (2026-10-25, branch feature/fantasyOption)
+
+Question: does a drone that glides any distance along its six lines (stopping at pieces, the fire and the board edge; pushes as before) change the game? Rule switch `DRONE_RANGE`
+in the engine (was a fixed 3). Method: both sides use the same rule and the same AI (0.3 s, at most 8 plies per move, 150-ply cap, 4 astronauts + smasher + drone + shield, first mover
+alternating); harness `tools/duel_harness.js` (the engine text inside each Web Worker has `let DRONE_RANGE = n;` replaced).
+
+| range | games | Blue wins | Red wins | draws | capped | plies per game | drone moves per game | drone kills per game | smasher kills per game |
+|---|---|---|---|---|---|---|---|---|---|
+| 3 | 55 | 21 | 22 | 10 | 2 | 74.3 | 8.58 | 0.85 | 2.16 |
+| unlimited | 56 | 22 | 27 | 6 | 1 | 75.6 | 8.61 | 0.91 | 2.68 |
+
+Reading: no measurable difference at this search depth (drone moves per game 8.6 against 8.6, kills 0.9 against 0.85, game length 75 plies against 74). The AI uses the long range
+no more often than the short one. Draws fell from 10 to 6, which is within noise. Kills are a push off the board, into the fire or against a piece (drone only; smasher kills are
+counted from the log text).
