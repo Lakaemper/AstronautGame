@@ -54,9 +54,10 @@ function redrawAll() { cancelAnimationFrame(rdTimer); rdTimer = requestAnimation
 /* ======== code copied from the game (art loading, sprites, the real drawPiece) ======== */
 const ART = {};
 // two art sets: 'space' (art/) and 'fantasy' (art/fantasy/); the game's Theme button stores the choice, this page follows it
+const THEME_DIR = { space: 'art/', fantasy: 'art/fantasy/', abstract: 'art/abstract/' };
 let THEME = 'space';
-try { const q = new URLSearchParams(location.search).get('theme'); THEME = q === 'fantasy' || q === 'space' ? q : (localStorage.getItem('astroTheme') === 'fantasy' ? 'fantasy' : 'space'); } catch (e) {}
-const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = (THEME === 'fantasy' ? 'art/fantasy/' : 'art/') + file; ART[key] = im; };
+try { const q = new URLSearchParams(location.search).get('theme'), st = localStorage.getItem('astroTheme'); THEME = THEME_DIR[q] ? q : THEME_DIR[st] ? st : 'space'; } catch (e) {}
+const loadArt = (key, file) => { const im = new Image(); im.onload = () => redrawAll(); im.src = THEME_DIR[THEME] + file; ART[key] = im; };
 loadArt('sheet', 'AstroAnimsheet.png');
 loadArt('sheetRed', 'AstroAnimsheetRed.png');
 loadArt('shipBlue', 'AstroShipBlue.png');
@@ -64,7 +65,7 @@ loadArt('shipRed', 'AstroShipRed.png');
 loadArt('fire', 'AstroFire.png');
 loadArt('expl', 'AstroExplosion.png');
 loadArt('bg', 'AstroBG.png');
-if (THEME === 'fantasy') { loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set ...
+if (THEME !== 'space') { loadArt('smasherBlue', 'AstroSmasherBlue.png'); loadArt('smasherRed', 'AstroSmasherRed.png'); }   // the Smasher: the ogre in the fantasy set ...
 else loadArt('gorilla', 'GorillaSprites.png');   // ... and the gorilla in the space set
 loadArt('shield', 'AstroShield.png');
 loadArt('base', 'AstroBase.png');
@@ -104,14 +105,25 @@ function drawFlame(cx, by, h, t) { sprite(ART.fire, R.flame[Math.floor(t / 90) %
 function flameUp(cx, baseY, f, h) { h *= THEME_RECTS[THEME].flameK[f]; g.save(); g.translate(cx, baseY); g.scale(1, -1); sprite(ART.fire, R.flameN[f], 0, h, h); g.restore(); }
 function fireGlow(cx, cy, r, a) { g.save(); g.globalAlpha *= a; blit(ART.glow, 0, 0, 256, 256, cx - r, cy - r, 2 * r, 2 * r); g.restore(); }
 const flick = (n, k) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b); x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d); x ^= x >>> 12; return (x >>> 0) % 4; };
-function drawStation(cx, cy, s, now) {              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
+function flatShape(cx, cy, pts, w) {                 // abstract theme: still amber outline diamond
+  g.beginPath(); pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](cx + x, cy + y)); g.closePath();
+  g.lineJoin = 'round'; g.lineWidth = w; g.strokeStyle = '#e0a21e'; g.stroke();
+}
+function flatStar(cx, cy, s) {                       // abstract theme: eight spokes round a hub
+  g.lineCap = 'round'; g.lineWidth = 5.5 * s; g.strokeStyle = '#e0a21e'; g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = Math.PI * i / 4, r = i % 2 ? 30 * s : 38 * s; g.moveTo(cx, cy); g.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+  g.stroke(); g.beginPath(); g.arc(cx, cy, 8 * s, 0, 7); g.fillStyle = '#e0a21e'; g.fill();
+}
+function drawStation(cx, cy, s, now) {
+  if (THEME_RECTS[THEME].flat) { flatStar(cx, cy, s); return; }   // the permanent fuel station: an eight-pointed star              // the permanent fuel station in the middle: a fire of three flickering flames (80% of the first size)
   s *= .8;
   fireGlow(cx, cy, 78 * s, .4);
   flameUp(cx - 27 * s, cy + 36 * s, flick(Math.floor(now / 130), 1), 60 * s);
   flameUp(cx + 27 * s, cy + 36 * s, flick(Math.floor(now / 115), 2), 54 * s);
   flameUp(cx, cy + 40 * s, flick(Math.floor(now / 100), 3), 96 * s);
 }
-function drawFire(p, cx, cy, s, now) {              // a one-time fuel fire: one small flickering flame
+function drawFire(p, cx, cy, s, now) {
+  if (THEME_RECTS[THEME].flat) { flatShape(cx, cy, [[0, -28 * s], [19 * s, 0], [0, 28 * s], [-19 * s, 0]], 5 * s); return; }   // a one-time fuel fire: a diamond              // a one-time fuel fire: one small flickering flame
   fireGlow(cx, cy, 40 * s, .34);
   if (imgOk(ART.crystal)) { blit(ART.crystal, 0, 0, 160, 160, cx - 34 * s, cy + 32 * s - 68 * s, 68 * s, 68 * s); return; }   // fantasy: a mana crystal
   flameUp(cx, cy + 22 * s, flick(Math.floor(now / 120), 10 + p.x), 54 * s);
@@ -127,6 +139,7 @@ const FRAMES = [[205, 0, 108, 160], [105, 0, 98, 160], [1, 0, 103, 160], [314, 0
 const THEME_RECTS = {
   space: { flame: [[12, 0, 25, 50], [51, 0, 26, 50], [94, 0, 29, 50], [144, 0, 22, 50]], flameN: [[12, 0, 25, 28], [51, 0, 26, 41], [94, 0, 29, 49], [144, 1, 22, 41]], flameK: [.78, .92, .95, 1], frames: FRAMES.map(r => r.slice()), wave: R.wave.slice(), drone: [0, 0, 143, 160], neptune: R.neptune.slice(), mars: R.mars.slice(), deco: R.deco.map(r => r.slice()) },
   fantasy: {"flame": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameN": [[13, 0, 23, 50], [54, 0, 21, 50], [97, 0, 23, 50], [144, 0, 22, 50]], "flameK": [1, 1, 1, 1], "frames": [[2, 0, 125, 160], [129, 0, 99, 160], [230, 0, 125, 160], [357, 0, 95, 160], [454, 0, 103, 160]], "wave": [559, 0, 128, 160], "drone": [0, 0, 224, 189], "neptune": [4, 4, 131, 136], "mars": [139, 4, 123, 130], "deco": [[266, 4, 97, 136], [367, 4, 103, 122], [4, 144, 104, 131], [112, 144, 84, 123], [200, 144, 60, 125]]},
+  abstract: {"frames": [[0, 0, 168, 168], [168, 0, 168, 168], [336, 0, 168, 168], [504, 0, 168, 168], [672, 0, 168, 168]], "wave": [840, 0, 168, 168], "drone": [0, 0, 168, 168], "neptune": [0, 0, 168, 168], "mars": [168, 0, 168, 168], "deco": [[330, 0, 6, 6]], "flame": [[0, 0, 32, 50], [32, 0, 32, 50], [64, 0, 32, 50], [96, 0, 32, 50]], "flameN": [[0, 0, 32, 50], [32, 0, 32, 50], [64, 0, 32, 50], [96, 0, 32, 50]], "flameK": [1, 1, 1, 1], "turns": false, "flat": true},
 };
 { const t = THEME_RECTS[THEME]; FRAMES.length = 0; FRAMES.push(...t.frames); Object.assign(R, { wave: t.wave, drone: t.drone, neptune: t.neptune, mars: t.mars, deco: t.deco, flame: t.flame, flameN: t.flameN }); }
 function drawPiece(p, cx, cy, s, lifted, now, vis) {
