@@ -2,7 +2,7 @@ import json, math, pickle, colorsys, os
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageEnhance, ImageChops
 import numpy as np
 
-OUT = r'C:\GitCopies\AstronautGame\art\fantasy'
+OUT = r'C:\GitCopies\AstronautGame\JS\art\fantasy'
 os.makedirs(OUT, exist_ok=True)
 L = lambda n: Image.open(f'cuts/{n}.png').convert('RGBA')
 wiz = pickle.load(open('wiz.pkl', 'rb'))

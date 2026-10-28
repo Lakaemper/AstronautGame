@@ -1,6 +1,8 @@
 # AstronautGame
 
-A chess-like strategy game for two on a hex board, featuring the little astronaut. Open `index.html` in Chrome or Edge
+**Repository layout:** `JS/` is the browser game (everything described below: `index.html`, `TUTORIAL.html`, `art/`, `serve.py`, notes, tools). A `Unity/` folder for the Unity version will sit next to it.
+
+A chess-like strategy game for two on a hex board, featuring the little astronaut. Open `JS/index.html` in Chrome or Edge
 (keep the `art/` folder next to it). Blue plays from the bottom, Red from the top; by default you play Red against the AI.
 
 **Goal:** walk an astronaut onto the enemy Core. Smashers, drones and shields can never win.
@@ -20,4 +22,4 @@ A chess-like strategy game for two on a hex board, featuring the little astronau
   after two of its turns (a cracked, more transparent dome after the first); a shield that has moved away heals on the
   next turn.
 
-Full rules, code map and design history: see `NOTES.md`.
+Full rules, code map and design history: see `JS/NOTES.md`.
