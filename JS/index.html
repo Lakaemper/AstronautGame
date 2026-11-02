@@ -177,7 +177,7 @@ function legal(p) {
   } else if (p.type === 'smasher') {                                     // the power piece (an ogre in the fantasy set): it MUST move 1 or 2 hexes (2 = a jump over everything but the sun), and where it lands it destroys all enemies around it
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
       const x = p.x + dx, y = p.y + dy, d = flyDist(p.x, p.y, x, y);
-      if (d < 1 || d > 2 || hexDist(0, 0, dx, dy) > 2 || !inB(x, y) || isStation(x, y)) continue;
+      if (d < 1 || d > 2 || hexDist(0, 0, dx, dy) > 2 || !inB(x, y) || isStation(x, y) || nearStation({ x, y })) continue;   // it may not land beside the central fire (2026-10-29)
       const t = A(x, y), fs = freeShield(t, o);
       if (t && !fs && (t.owner === o || fixed(t))) continue;           // an own piece, a Core or a shield cannot be landed on
       const hit = t && !fs ? t : null, kv = (hit ? VICTIM[hit.type] : 0) + smashList(p, x, y).reduce((a, v) => a + VICTIM[v.type], 0);
