@@ -14,6 +14,7 @@ import functools, http.server, json, os, re, secrets, socket, sys, threading, ti
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ROOMS_FILE = os.path.join(ROOT, 'rooms.json')
+VISITS_FILE = os.environ.get('ASTRO_VISITS_LOG') or os.path.join(os.path.dirname(ROOT), 'visits.log')   # next to the folder, so it is never served
 MAX_ROOMS, MAX_AGE, KEEPALIVE = 500, 14 * 24 * 3600, 15
 cond = threading.Condition()
 present = {}                                           # room -> [connected Blue streams, connected Red streams]
@@ -41,6 +42,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         if '/api/events' not in str(args[0] if args else ''): super().log_message(fmt, *args)      # the event streams would flood the log
+
+    # ---------- visit log: one line per page load: date time (UTC), IP address, page
+    def log_visit(self):
+        path = urllib.parse.urlparse(self.path).path
+        if not (path.endswith('/') or path.endswith('.html')): return            # only pages, not images or scripts
+        ip = (self.headers.get('X-Forwarded-For') or '').split(',')[0].strip() or self.client_address[0]      # behind Caddy the real address is in X-Forwarded-For
+        try:
+            with open(VISITS_FILE, 'a', encoding='utf8') as f:
+                f.write('%s  %s  %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()), ip, path))
+        except OSError: pass
 
     # ---------- helpers
     def reply(self, code, obj):
@@ -94,7 +105,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # ---------- GET /api/events (Server-Sent Events), everything else is a plain file
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
-        if u.path != '/api/events': return super().do_GET()
+        if u.path != '/api/events':
+            self.log_visit(); return super().do_GET()
         q = urllib.parse.parse_qs(u.query); rid = (q.get('room') or [''])[0]; tok = (q.get('token') or [''])[0]
         with cond:
             room = rooms.get(rid); colour = seat_for(room, tok) if room else None
