@@ -3,7 +3,7 @@
 Flat geometric pieces, no textures: Blue = light blue, Red = deep rust, each with a contrasting outline; a neutral green-grey board with
 a light orange refuel zone. Every file has the same name and (where the game cuts frames out of it with fixed rectangles) the same layout
 as in art/ (see ART_BRIEF.md); the sheets that the game cuts with per-theme rectangles (astronaut, drone, planets, flames) are listed in
-THEME_RECTS['abstract'] in index.html, TUTORIAL.html and ART_SHEET.html and in art/abstract/theme.json.
+THEME_RECTS['abstract'] in index.html, tutorial_moves.html and ART_SHEET.html and in art/abstract/theme.json.
 The hex shapes (frames of AstroHexes.png) are taken from art/AstroHexes.png, so run this from the repository root: python tools/abstract_theme/build_abstract.py
 """
 import json, math, os

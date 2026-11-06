@@ -1,6 +1,6 @@
 # AstronautGame
 
-**Repository layout:** `JS/` is the browser game (everything described below: `index.html`, `TUTORIAL.html`, `art/`, `serve.py`, notes, tools). A `Unity/` folder for the Unity version will sit next to it.
+**Repository layout:** `JS/` is the browser game (everything described below: `index.html`, `tutorial_moves.html`, `art/`, `serve.py`, notes, tools). A `Unity/` folder for the Unity version will sit next to it.
 
 A chess-like strategy game for two on a hex board, featuring the little astronaut. Open `JS/index.html` in Chrome or Edge
 (keep the `art/` folder next to it). Blue plays from the bottom, Red from the top; by default you play Red against the AI.

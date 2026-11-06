@@ -14,7 +14,7 @@
              border:4px solid #111; box-shadow:5px 6px 0 #0007; background:#0d1544; }
   canvas#c.dragging { cursor:grabbing; }
   #side { display:flex; flex-direction:column; gap:14px; width:310px; max-width:92vw; }
-  #panel, #setup { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:100%;
+  #panel, #setup, #openingPanel { background:var(--paper); border:4px solid #111; border-radius:14px; padding:16px 18px; width:100%;
            box-shadow:5px 6px 0 #0007; }
   #ctrl { border-collapse:collapse; margin-bottom:6px; } #ctrl th { font-weight:400; font-size:13px; color:var(--dim); padding:0 8px; } #ctrl td { padding:2px 8px; text-align:center; } #ctrl td:first-child { text-align:left; font-weight:700; -webkit-text-stroke:.6px #111; paint-order:stroke fill; }
   input.ck { appearance:none; -webkit-appearance:none; width:24px; height:24px; margin:0; border:3px solid #111; border-radius:6px; background:#fff; cursor:pointer; vertical-align:middle; display:inline-grid; place-items:center; }
@@ -26,7 +26,7 @@
   /* the flat 'abstract' (tournament) look: neutral page, no comic outlines */
   body[data-theme="abstract"] { --bg:#2a2d2b; --paper:#e9ebe6; --dim:#5d625c; font-family:"Segoe UI",system-ui,Helvetica,Arial,sans-serif; }
   body[data-theme="abstract"] canvas#c { border:2px solid #14171a; border-radius:6px; box-shadow:none; background:#2a2d2b; }
-  body[data-theme="abstract"] #panel, body[data-theme="abstract"] #setup { border:2px solid #14171a; border-radius:6px; box-shadow:none; }
+  body[data-theme="abstract"] #panel, body[data-theme="abstract"] #setup, body[data-theme="abstract"] #openingPanel { border:2px solid #14171a; border-radius:6px; box-shadow:none; }
   body[data-theme="abstract"] h1 { color:#e9ebe6; -webkit-text-stroke:0; text-shadow:none; letter-spacing:2px; }
   body[data-theme="abstract"] #turn, body[data-theme="abstract"] #ctrl td:first-child { -webkit-text-stroke:0; }
   body[data-theme="abstract"] #bgc { display:none; }
@@ -59,6 +59,14 @@
 </div>
 <div id="side">
   <div id="toprow"><button id="tutorial">Tutorial</button><select id="themeSel" title="Picture set"><option value="space">Theme: Space</option><option value="fantasy">Theme: Fantasy</option><option value="abstract">Theme: Abstract</option></select></div>
+  <div id="openingPanel" hidden>
+    <div id="opCat" style="font-weight:700;font-size:18px"></div>
+    <div id="opTitle" style="margin:2px 0 8px;font-size:13px;word-break:break-word"></div>
+    <div id="opCtl"><button id="opNext">Next move</button> <button id="opBack">Go back</button> <span id="opCount"></span></div>
+    <div id="opCont" hidden><p style="margin:8px 0 4px">The four moves are played. Play on against the AI (look-ahead 7):</p><button id="opBlue">Continue as Blue</button> <button id="opRed">Continue as Red</button></div>
+    <div id="opDone" hidden style="margin-top:6px"></div>
+    <p style="margin:8px 0 0"><a href="openings.html">&larr; all openings</a></p>
+  </div>
   <div id="setup">
     <table id="ctrl"><tr><th></th><th id="thH">Human</th><th id="thA">AI</th></tr>
       <tr><td><span class="rect" style="--c:var(--blue)" title="Blue"></span></td><td><input type="checkbox" class="ck" id="ck0h" style="--c:var(--blue)"></td><td><input type="checkbox" class="ck" id="ck0a" style="--c:var(--blue)" checked></td></tr>
@@ -497,7 +505,7 @@ function hexPath(ctx, cx, cy, r) {
   for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
   ctx.closePath();
 }
-const UNDO_DEPTH = 4;
+let UNDO_DEPTH = 4;
 let pieces, turn, winner, msg, drag, hover, lastMove = null, thinking = false, history = [], hint = null, seen = {};
 let started = false;                              // nothing moves (not even the AI) until the user presses "New game"
 const anims = new Map();                        // piece -> running move animation
@@ -717,7 +725,7 @@ cv.addEventListener('pointercancel', () => { drag = null; cv.classList.remove('d
 // End game: drop the running game and show the fresh start position again; nothing moves until "New game" is pressed
 document.getElementById('endgame').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = false; newGame(); draw(); };
 document.getElementById('reset').onclick = () => { if (online) { if (!confirm('Leave the online game?')) return; leaveOnline(); } started = true; newGame(); draw(); };
-document.getElementById('tutorial').onclick = () => window.open('TUTORIAL.html', '_blank');   // the illustrated rules live on their own page
+document.getElementById('tutorial').onclick = () => window.open('tutorial.html', '_blank');   // the tutorial menu: basic moves (tutorial_moves.html) or the opening studies (openings.html)
 const themeSel = document.getElementById('themeSel');
 const showTheme = () => { themeSel.value = THEME; document.body.dataset.theme = THEME; };
 themeSel.onchange = () => {                          // switch the whole picture set; the game in progress stays as it is
@@ -1317,6 +1325,41 @@ document.getElementById('online').onclick = async () => {
 newGame(); draw();
 { const room = new URLSearchParams(location.search).get('room'), key = (location.hash.match(/k=([\w-]+)/) || [])[1];   // opened an invitation link
   if (room) api('join', { room, token: key }).then(r => enterOnline(room, r.token, r.color, r.setup, r.start, r.host)).catch(e => say(e.status === 404 ? 'This online game does not exist (any more).' : 'Could not join: ' + e.message)); }
+// ---------- opening viewer: index.html?opening=Ad1-d2,Ab9=c9,... (8 moves) &oname=Category|title (links from openings.html) ----------
+// Steps through the opening move by move ("Next move" / "Go back"), then offers to play on as Blue or Red against the AI (look-ahead 7).
+{
+  const q = new URLSearchParams(location.search), notes = (q.get('opening') || '').split(',').filter(Boolean);
+  if (notes.length && !q.get('room')) {
+    const $ = id => document.getElementById(id), panel = $('openingPanel'), nextB = $('opNext'), backB = $('opBack'), cont = $('opCont');
+    const [cat, ...rest] = (q.get('oname') || 'Opening').split('|');
+    panel.hidden = false; $('opCat').textContent = cat; $('opTitle').textContent = rest.join('|');
+    $('setup').style.display = 'none'; for (const id of ['undo', 'suggest', 'endgame']) $(id).style.display = 'none';
+    UNDO_DEPTH = 100; started = true; roleSel.value = 'two'; setSetup('4111'); startSel.value = '0'; newGame(); draw();
+    const sqOf = (x, y) => 'abcdefghi'[colOf(x, y)] + (ROWS - y);
+    const KINDS = { '-': ['walk', 'cover'], '~': ['jump'], x: ['capture'], '*': ['smash'], '>': ['push'], '+': ['refuel'], '=': ['feed'] }, TYPES = { A: 'astro', S: 'smasher', D: 'drone', H: 'shield', C: 'core' };
+    function findNote(note) {                           // "Ab1-b2" -> the piece and the engine move it means, in the current position
+      const m = /^([ASDHC])([a-i][1-9])([-~x*>+=])([a-i][1-9])?$/.exec(note); if (!m) return null;
+      for (const p of pieces) {
+        if (p.owner !== turn || p.type !== TYPES[m[1]] || sqOf(p.x, p.y) !== m[2]) continue;
+        for (const mv of legal(p)) if (KINDS[m[3]].includes(mv.kind) && (m[4] === undefined || sqOf(mv.x, mv.y) === m[4])) return { p, m: mv };
+      }
+      return null;
+    }
+    let live = true;
+    const refresh = () => {
+      if (!live) return;
+      const n = history.length, bz = busy();
+      nextB.disabled = bz || n >= notes.length; backB.disabled = bz || n === 0;
+      $('opCount').textContent = 'move ' + Math.min(n + 1, notes.length) + ' of ' + notes.length + ' (' + (n === 0 ? 'nothing played yet' : 'last: ' + notes[n - 1]) + ')';
+      cont.hidden = !(n >= notes.length && !bz);
+    };
+    nextB.onclick = () => { const f = !busy() && history.length < notes.length && findNote(notes[history.length]); if (f) apply(f.p, f.m, ''); else if (!busy() && history.length < notes.length) say('Cannot play ' + notes[history.length]); refresh(); };
+    backB.onclick = () => { if (!busy() && history.length) $('undo').onclick(); refresh(); };
+    const go = human => { live = false; cont.hidden = true; $('opCtl').hidden = true; $('setup').style.display = ''; for (const id of ['undo', 'suggest', 'endgame']) $(id).style.display = ''; aiDepth.value = '7'; roleSel.value = human; $('opDone').hidden = false; $('opDone').textContent = 'Playing on as ' + (human === 'blue' ? 'Blue' : 'Red') + ' against the AI (look-ahead 7).'; killPonder(); roleSel.onchange(); updateUI(); };
+    $('opBlue').onclick = () => go('blue'); $('opRed').onclick = () => go('red');
+    setInterval(refresh, 120); refresh();
+  }
+}
 if (typeof window !== 'undefined') setInterval(() => { if (!looping && pieces) draw(); }, 50);
 </script>
 </body>
